@@ -7,15 +7,19 @@ package akka.kafka
 import java.util
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.regex.Pattern
-import akka.actor.{Actor, ActorLogging, ActorRef, Cancellable, Props, Status, Terminated}
+
+import akka.actor.{ Actor, ActorLogging, ActorRef, Cancellable, Props, Status, Terminated }
 import akka.event.LoggingReceive
 import org.apache.kafka.clients.consumer._
-import org.apache.kafka.common.TopicPartition
+import org.apache.kafka.common.{ Metric, MetricName, TopicPartition }
 import org.apache.kafka.common.errors.WakeupException
+
 import scala.collection.JavaConverters._
 import java.util.concurrent.locks.LockSupport
+
 import akka.actor.DeadLetterSuppression
-import scala.util.control.{NoStackTrace, NonFatal}
+
+import scala.util.control.{ NoStackTrace, NonFatal }
 
 object KafkaConsumerActor {
   case class StoppingException() extends RuntimeException("Kafka consumer is stopping")
@@ -48,7 +52,17 @@ object KafkaConsumerActor {
 
     private[KafkaConsumerActor] class NoPollResult extends RuntimeException with NoStackTrace
   }
-
+  
+  /** Public protocol which can be used to interact with the Actor */
+  object Protocol {
+    // requests
+    final case class RequestMetrics()
+    
+    // responses
+    /** Contains a snapshot of metrics obtained from the underlying kafka consumer */
+    final case class ConsumerMetrics(metrics: Map[MetricName, Metric])
+  }
+  
   private[kafka] def rebalanceListener(onAssign: Iterable[TopicPartition] => Unit, onRevoke: Iterable[TopicPartition] => Unit) = new ConsumerRebalanceListener {
     override def onPartitionsAssigned(partitions: util.Collection[TopicPartition]): Unit = {
       onAssign(partitions.asScala)
@@ -173,6 +187,11 @@ private[kafka] class KafkaConsumerActor[K, V](settings: ConsumerSettings[K, V])
         stopInProgress = true
         context.become(stopping)
       }
+
+    case Protocol.RequestMetrics() =>
+      val unmodifiableYetMutableMetrics: java.util.Map[MetricName, _ <: Metric] = consumer.metrics()
+      sender() ! Protocol.ConsumerMetrics(unmodifiableYetMutableMetrics.asScala.toMap)
+      
     case Terminated(ref) =>
       requests -= ref
       requestors -= ref
