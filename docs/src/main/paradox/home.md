@@ -57,5 +57,6 @@ that are producing or consuming messages to/from Kafka.
 * [Consumer](consumer.md)
 * [Error Handling](errorhandling.md)
 * [At-Least-Once Delivery](atleastonce.md)
+* [Transactions](transactions.md)
 
 @@@
