@@ -326,4 +326,20 @@ class ExternallyControlledKafkaConsumer extends ConsumerExample {
   }
 }
 
+class TransactionalSource extends ConsumerExample {
+  public static void main(String[] args) {
+    new TransactionalSource().demo();
+  }
 
+  public void demo() {
+    // #transactionalSource
+    Consumer
+      .transactionalSource(consumerSettings, Subscriptions.topics("source-topic"))
+      .via(business())
+      .map(msg ->
+        new ProducerMessage.Message<byte[], String, ConsumerMessage.PartitionOffset>(
+          new ProducerRecord<>("sink-topic", msg.record().value()), msg.partitionOffset()))
+      .runWith(Sink.ignore(), materializer);
+    // #transactionalSource
+  }
+}

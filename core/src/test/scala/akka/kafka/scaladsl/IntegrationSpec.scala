@@ -6,16 +6,18 @@
 package akka.kafka.scaladsl
 
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.{ConcurrentLinkedQueue, TimeUnit}
 
 import akka.actor.ActorSystem
 import akka.kafka.ConsumerMessage.CommittableOffsetBatch
 import akka.kafka.ProducerMessage.Message
 import akka.kafka.Subscriptions.TopicSubscription
+import akka.kafka.scaladsl.Consumer.Control
 import akka.kafka.test.Utils._
-import akka.kafka.{ConsumerSettings, ProducerMessage, ProducerSettings}
-import akka.stream.ActorMaterializer
-import akka.stream.scaladsl.{Keep, Sink, Source}
+import akka.kafka.{ConsumerMessage, ConsumerSettings, ProducerMessage, ProducerSettings}
+import akka.stream.{ActorMaterializer, ActorMaterializerSettings, Attributes, KillSwitches}
+import akka.stream.scaladsl.{Keep, RestartSource, Sink, Source}
 import akka.stream.testkit.TestSubscriber
 import akka.stream.testkit.scaladsl.TestSink
 import akka.testkit.TestKit
@@ -416,6 +418,110 @@ class IntegrationSpec extends TestKit(ActorSystem("IntegrationSpec"))
         probe1.cancel()
         probe2.cancel()
 
+      }
+    }
+
+    "successful consume transform produce transaction" in {
+      assertAllStagesStopped {
+        val sourceTopic = createTopic(1)
+        val sinkTopic = createTopic(2)
+        val group = createGroup(1)
+
+        givenInitializedTopic(sourceTopic)
+        givenInitializedTopic(sinkTopic)
+
+        Await.result(produce(sourceTopic, 1 to 100), remainingOrDefault)
+
+        val consumerSettings = createConsumerSettings(group)
+
+        val control = Consumer.transactionalSource(consumerSettings, TopicSubscription(Set(sourceTopic)))
+          .filterNot(_.record.value() == InitialMsg)
+          .map { msg =>
+            ProducerMessage.Message(
+              new ProducerRecord[Array[Byte], String](sinkTopic, msg.record.value), msg.partitionOffset)
+          }
+          .via(Producer.transactionalFlow(producerSettings, group))
+          .toMat(Sink.ignore)(Keep.left)
+          .run()
+
+        val probeConsumerGroup = createGroup(2)
+        val probeConsumerSettings = createConsumerSettings(probeConsumerGroup)
+          .withProperties(ConsumerConfig.ISOLATION_LEVEL_CONFIG -> "read_committed")
+
+        val probeConsumer = Consumer.plainSource(probeConsumerSettings, TopicSubscription(Set(sinkTopic)))
+          .filterNot(_.value == InitialMsg)
+          .map(_.value())
+          .runWith(TestSink.probe)
+
+        probeConsumer
+          .request(100)
+          .expectNextN((1 to 100).map(_.toString))
+
+        probeConsumer.cancel()
+        Await.result(control.shutdown(), remainingOrDefault)
+      }
+    }
+
+    "successful consume transform produce transaction with transient failure causing an abort with restartable source" in {
+      assertAllStagesStopped {
+        val sourceTopic = createTopic(1)
+        val sinkTopic = createTopic(2)
+        val group = createGroup(1)
+
+        givenInitializedTopic(sourceTopic)
+        givenInitializedTopic(sinkTopic)
+
+        Await.result(produce(sourceTopic, 1 to 1000), remainingOrDefault)
+
+        val consumerSettings = createConsumerSettings(group)
+
+        var restartCount = 0
+        var innerControl = null.asInstanceOf[Control]
+
+        val restartSource = RestartSource.onFailuresWithBackoff(
+          minBackoff = 0.1.seconds,
+          maxBackoff = 1.seconds,
+          randomFactor = 0.2
+        ) { () =>
+          restartCount += 1
+          Consumer.transactionalSource(consumerSettings, TopicSubscription(Set(sourceTopic)))
+            .filterNot(_.record.value() == InitialMsg)
+            .map { msg =>
+              if (msg.record.value().equals("500") && restartCount < 2) {
+                // add a delay that equals or exceeds EoS commit interval to trigger a commit for everything
+                // up until this record (0 -> 50)
+                Thread.sleep(producerSettings.eosCommitIntervalMs + 10)
+              }
+              if (msg.record.value().equals("501") && restartCount < 2) {
+                throw new RuntimeException("Uh oh..")
+              }
+              else {
+                ProducerMessage.Message(
+                  new ProducerRecord[Array[Byte], String](sinkTopic, msg.record.value()), msg.partitionOffset)
+              }
+            }
+            // side effect out the `Control` materialized value because it can't be propagated through the `RestartSource`
+            .mapMaterializedValue(innerControl = _)
+            .via(Producer.transactionalFlow(producerSettings, group))
+        }
+
+        restartSource.runWith(Sink.ignore)
+
+        val probeGroup = createGroup(2)
+        val probeConsumerSettings = createConsumerSettings(probeGroup)
+          .withProperties(ConsumerConfig.ISOLATION_LEVEL_CONFIG -> "read_committed")
+
+        val probeConsumer = Consumer.plainSource(probeConsumerSettings, TopicSubscription(Set(sinkTopic)))
+          .filterNot(_.value == InitialMsg)
+          .map(_.value())
+          .runWith(TestSink.probe)
+
+        probeConsumer
+          .request(1000)
+          .expectNextN((1 to 1000).map(_.toString))
+
+        probeConsumer.cancel()
+        Await.result(innerControl.shutdown(), remainingOrDefault)
       }
     }
   }
