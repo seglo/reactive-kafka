@@ -50,7 +50,9 @@ class TransactionsFailureRetryExample extends ConsumerExample {
     stream.runWith(Sink.ignore)
 
     // Add shutdown hook to respond to SIGTERM and gracefully shutdown stream
-    Runtime.getRuntime.addShutdownHook(new Thread { Await.result(innerControl.shutdown(), 10.seconds) })
+    sys.ShutdownHookThread {
+      Await.result(innerControl.shutdown(), 10.seconds)
+    }
     // #transactionalFailureRetry
 
     terminateWhenDone(innerControl.shutdown())

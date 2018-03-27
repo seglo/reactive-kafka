@@ -1,6 +1,6 @@
 # Transactions
 
-Kafka Transactions provide guarantees that messages processed in a consume->transform->produce workflow (consumed from a source topic, transformed, and produced to a destination topic) are processed exactly once or not at all.  This is achieved through coordination between the Kafka consumer group coordinator, transaction coordinator, and the consumer and producer clients used in the user application.  The Kafka producer marks messages that are consumed from the source topic as "committed" only once the transformed messages are successfully produced to the sink.   
+Kafka Transactions provide guarantees that messages processed in a consume-transform-produce workflow (consumed from a source topic, transformed, and produced to a destination topic) are processed exactly once or not at all.  This is achieved through coordination between the Kafka consumer group coordinator, transaction coordinator, and the consumer and producer clients used in the user application.  The Kafka producer marks messages that are consumed from the source topic as "committed" only once the transformed messages are successfully produced to the sink.   
 
 ## Transactional Source
 
@@ -20,7 +20,7 @@ They override producer properties `enable.idempotence` to `true` and `max.in.fli
 
 A transactional ID must be defined and unique for each instance of the application.
 
-## Consume Transform Produce Workflow
+## Consume-Transform-Produce Workflow
 
 Kafka transactions are handled transparently to the user.  The `Consumer.transactionalSource` will enforce that a consumer group id is specified and the `Producer.transactionalFlow` or `Producer.transactionalSink` will enforce that a transactional id is specified.  All other Kafka consumer and producer properties required to enable transactions are overridden.
 

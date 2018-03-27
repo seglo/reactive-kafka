@@ -421,7 +421,7 @@ class IntegrationSpec extends TestKit(ActorSystem("IntegrationSpec"))
       }
     }
 
-    "successful consume transform produce transaction" in {
+    "successful consume-transform-produce transaction" in {
       assertAllStagesStopped {
         val sourceTopic = createTopic(1)
         val sinkTopic = createTopic(2)
@@ -462,7 +462,7 @@ class IntegrationSpec extends TestKit(ActorSystem("IntegrationSpec"))
       }
     }
 
-    "successful consume transform produce transaction with transient failure causing an abort with restartable source" in {
+    "successful consume-transform-produce transaction with transient failure causing an abort with restartable source" in {
       assertAllStagesStopped {
         val sourceTopic = createTopic(1)
         val sinkTopic = createTopic(2)
@@ -487,12 +487,12 @@ class IntegrationSpec extends TestKit(ActorSystem("IntegrationSpec"))
           Consumer.transactionalSource(consumerSettings, TopicSubscription(Set(sourceTopic)))
             .filterNot(_.record.value() == InitialMsg)
             .map { msg =>
-              if (msg.record.value().equals("500") && restartCount < 2) {
+              if (msg.record.value().toInt == 500 && restartCount < 2) {
                 // add a delay that equals or exceeds EoS commit interval to trigger a commit for everything
                 // up until this record (0 -> 500)
                 Thread.sleep(producerSettings.eosCommitIntervalMs + 10)
               }
-              if (msg.record.value().equals("501") && restartCount < 2) {
+              if (msg.record.value().toInt == 501 && restartCount < 2) {
                 throw new RuntimeException("Uh oh..")
               }
               else {

@@ -97,7 +97,7 @@ object Producer {
     val txProducerSettings = settings.withProperties(
       ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG -> true.toString,
       ProducerConfig.TRANSACTIONAL_ID_CONFIG -> transactionalId,
-      ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION -> "1"
+      ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION -> 1.toString
     ).withEosEnabled(true)
 
     flow[K, V, ConsumerMessage.PartitionOffset](txProducerSettings)

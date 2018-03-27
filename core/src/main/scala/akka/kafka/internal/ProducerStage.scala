@@ -59,21 +59,21 @@ private[kafka] class ProducerStage[K, V, P](
     @volatile var inIsClosed = false
     var completionState: Option[Try[Unit]] = None
 
-    override protected def logSource: Class[_] = classOf[ProducerStage[K, V, P]]
+    override protected def logSource: Class[_] = classOf[ProducerStage[_, _, _]]
 
     def checkForCompletion() = {
       if (isClosed(in) && awaitingConfirmation.get == 0) {
         completionState match {
-          case Some(Success(_)) =>
-            onCompletionSuccess()
-            completeStage()
-          case Some(Failure(ex)) =>
-            onCompletionFailure(ex)
-            failStage(ex)
+          case Some(Success(_)) => onCompletionSuccess()
+          case Some(Failure(ex)) => onCompletionFailure(ex)
           case None => failStage(new IllegalStateException("Stage completed, but there is no info about status"))
         }
       }
     }
+
+    override def onCompletionSuccess(): Unit = completeStage()
+
+    override def onCompletionFailure(ex: Throwable): Unit = failStage(ex)
 
     val checkForCompletionCB = getAsyncCallback[Unit] { _ =>
       checkForCompletion()
@@ -188,8 +188,7 @@ private[kafka] class ProducerStage[K, V, P](
       if (!commitInProgress) {
         commitInProgress = true
       }
-      val awaitingConfirmationCount = awaitingConfirmation.get
-      if (awaitingConfirmationCount == 0) {
+      if (awaitingConfirmation.get == 0) {
         maybeCommitTransaction()
         commitInProgress = false
         // restart demand for more messages once last batch has been committed
@@ -213,11 +212,13 @@ private[kafka] class ProducerStage[K, V, P](
     override def onCompletionSuccess(): Unit = {
       log.debug("Committing final transaction before shutdown")
       maybeCommitTransaction(beginNewTransaction = false)
+      super.onCompletionSuccess()
     }
 
     override def onCompletionFailure(ex: Throwable): Unit = {
       log.debug("Aborting transaction due to stage failure")
       abortTransaction()
+      super.onCompletionFailure(ex)
     }
 
     private def maybeCommitTransaction(beginNewTransaction: Boolean = true): Unit = {
@@ -254,8 +255,8 @@ private[kafka] class ProducerStage[K, V, P](
 }
 
 private[kafka] trait ProducerCompletionState {
-  def onCompletionSuccess(): Unit = {}
-  def onCompletionFailure(ex: Throwable): Unit = {}
+  def onCompletionSuccess(): Unit
+  def onCompletionFailure(ex: Throwable): Unit
 }
 
 private[kafka] trait MessageCallback[K, V, P] {
@@ -266,23 +267,25 @@ private[kafka] trait MessageCallback[K, V, P] {
 private[kafka] class TransactionOffsetBatch() {
   private val offsets = mutable.Map[GroupTopicPartition, Long]()
 
+  private def groups: Set[String] = offsets.keys.map(_.groupId).toSet
+
+  private def requireOneGroup(groups: Set[String]): Unit = require(
+    groups.size <= 1,
+    s"Transactional batch must contain messages from exactly 1 consumer group. Found: [${groups.mkString(",")}]")
+
   def update(partitionOffset: PartitionOffset): Unit = {
     val key = partitionOffset.key
+    requireOneGroup(groups + key.groupId)
     offsets.update(key, partitionOffset.offset)
   }
 
   def nonEmpty: Boolean = offsets.nonEmpty
+
   def clear(): Unit = offsets.clear()
 
   def offsetMap(): (String, JMap[TopicPartition, OffsetAndMetadata]) = {
-    val groups = offsets.groupBy {
-      case (groupTopicPartition, _) => groupTopicPartition.groupId
-    }.keys
-
-    require(groups.size == 1, "Transactional batch must contain messages from exactly 1 consumer group. " +
-      s"Found: [${groups.mkString(",")}]")
-
-    (groups.head, offsets.map {
+    requireOneGroup(groups)
+    (offsets.head._1.groupId, offsets.map {
       case (gtp, offset) => new TopicPartition(gtp.topic, gtp.partition) -> new OffsetAndMetadata(offset + 1)
     }.asJava)
   }
