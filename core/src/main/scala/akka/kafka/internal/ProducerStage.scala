@@ -7,7 +7,6 @@ package akka.kafka.internal
 
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
-import java.util.{Map => JMap}
 
 import akka.kafka.ConsumerMessage
 import akka.kafka.ConsumerMessage.{GroupTopicPartition, PartitionOffset}
@@ -20,7 +19,6 @@ import org.apache.kafka.clients.producer.{Callback, Producer, RecordMetadata}
 import org.apache.kafka.common.TopicPartition
 
 import scala.collection.JavaConverters._
-import scala.collection.mutable
 import scala.concurrent.duration._
 import scala.concurrent.{Future, Promise}
 import scala.util.control.NonFatal
@@ -161,7 +159,7 @@ private[kafka] class ProducerStage[K, V, P](
 
     private var isTransactionOpen = false
     private var commitInProgress = false
-    private val batchOffsets = new TransactionOffsetBatch
+    private var batchOffsets = TransactionOffsetBatch.empty
 
     override def preStart(): Unit = {
       initTransactions()
@@ -185,9 +183,7 @@ private[kafka] class ProducerStage[K, V, P](
       }
 
     private def onCommitInterval(): Unit = {
-      if (!commitInProgress) {
-        commitInProgress = true
-      }
+      commitInProgress = true
       if (awaitingConfirmation.get == 0) {
         maybeCommitTransaction()
         commitInProgress = false
@@ -202,12 +198,10 @@ private[kafka] class ProducerStage[K, V, P](
       }
     }
 
-    override val onMessageAckCb: AsyncCallback[Message[K, V, P]] = getAsyncCallback[Message[K, V, P]] { (msg) =>
-      msg.passThrough match {
-        case o: ConsumerMessage.PartitionOffset => batchOffsets.update(o)
-        case _ =>
-      }
-    }
+    override val onMessageAckCb: AsyncCallback[Message[K, V, P]] = getAsyncCallback[Message[K, V, P]](_.passThrough match {
+      case o: ConsumerMessage.PartitionOffset => batchOffsets = batchOffsets.updated(o)
+      case _ =>
+    })
 
     override def onCompletionSuccess(): Unit = {
       log.debug("Committing final transaction before shutdown")
@@ -221,18 +215,19 @@ private[kafka] class ProducerStage[K, V, P](
       super.onCompletionFailure(ex)
     }
 
-    private def maybeCommitTransaction(beginNewTransaction: Boolean = true): Unit = {
-      if (batchOffsets.nonEmpty) {
-        val (groupId, offsetMap) = batchOffsets.offsetMap()
-        log.debug(s"Committing transaction for consumer group '${groupId}' with offsets: $offsetMap")
-        producer.sendOffsetsToTransaction(offsetMap, groupId)
+    private def maybeCommitTransaction(beginNewTransaction: Boolean = true): Unit = batchOffsets match {
+      case batch: NonemptyTransactionOffsetBatch =>
+        val group = batch.group
+        val offsetMap = batchOffsets.offsetMap().asJava
+        log.debug(s"Committing transaction for consumer group '$group' with offsets: $offsetMap")
+        producer.sendOffsetsToTransaction(offsetMap, group)
         producer.commitTransaction()
-        batchOffsets.clear()
+        batchOffsets = TransactionOffsetBatch.empty
         isTransactionOpen = false
         if (beginNewTransaction) {
           beginTransaction()
         }
-      }
+      case _ =>
     }
 
     private def initTransactions(): Unit = {
@@ -264,29 +259,41 @@ private[kafka] trait MessageCallback[K, V, P] {
   def onMessageAckCb: AsyncCallback[Message[K, V, P]]
 }
 
-private[kafka] class TransactionOffsetBatch() {
-  private val offsets = mutable.Map[GroupTopicPartition, Long]()
+private[kafka] object TransactionOffsetBatch {
+  def empty: TransactionOffsetBatch = new EmptyTransactionOffsetBatch()
+  def create(partitionOffset: PartitionOffset): NonemptyTransactionOffsetBatch = new NonemptyTransactionOffsetBatch(partitionOffset)
+}
 
-  private def groups: Set[String] = offsets.keys.map(_.groupId).toSet
+private[kafka] trait TransactionOffsetBatch {
+  def nonEmpty: Boolean
+  def updated(partitionOffset: PartitionOffset): TransactionOffsetBatch
+  def group: String
+  def offsetMap(): Map[TopicPartition, OffsetAndMetadata]
+}
 
-  private def requireOneGroup(groups: Set[String]): Unit = require(
-    groups.size <= 1,
-    s"Transactional batch must contain messages from exactly 1 consumer group. Found: [${groups.mkString(",")}]")
+private[kafka] class EmptyTransactionOffsetBatch extends TransactionOffsetBatch {
+  override def nonEmpty: Boolean = false
+  override def updated(partitionOffset: PartitionOffset): TransactionOffsetBatch = new NonemptyTransactionOffsetBatch(partitionOffset)
+  override def group: String = throw new IllegalStateException("Empty batch has no group defined")
+  override def offsetMap(): Map[TopicPartition, OffsetAndMetadata] = Map[TopicPartition, OffsetAndMetadata]()
+}
 
-  def update(partitionOffset: PartitionOffset): Unit = {
-    val key = partitionOffset.key
-    requireOneGroup(groups + key.groupId)
-    offsets.update(key, partitionOffset.offset)
+private[kafka] class NonemptyTransactionOffsetBatch(
+    head: PartitionOffset,
+    tail: Map[GroupTopicPartition, Long] = Map[GroupTopicPartition, Long]())
+  extends TransactionOffsetBatch {
+  private val offsets = tail + (head.key -> head.offset)
+
+  override def nonEmpty: Boolean = true
+  override def group: String = offsets.keys.head.groupId
+  override def updated(partitionOffset: PartitionOffset): TransactionOffsetBatch = {
+    require(
+      group == partitionOffset.key.groupId,
+      s"Transaction batch must contain messages from exactly 1 consumer group. $group != ${partitionOffset.key.groupId}")
+    new NonemptyTransactionOffsetBatch(partitionOffset, offsets)
   }
-
-  def nonEmpty: Boolean = offsets.nonEmpty
-
-  def clear(): Unit = offsets.clear()
-
-  def offsetMap(): (String, JMap[TopicPartition, OffsetAndMetadata]) = {
-    requireOneGroup(groups)
-    (offsets.head._1.groupId, offsets.map {
+  override def offsetMap(): Map[TopicPartition, OffsetAndMetadata] =
+    offsets.map {
       case (gtp, offset) => new TopicPartition(gtp.topic, gtp.partition) -> new OffsetAndMetadata(offset + 1)
-    }.asJava)
-  }
+    }
 }
