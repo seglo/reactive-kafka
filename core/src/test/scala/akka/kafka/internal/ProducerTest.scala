@@ -70,8 +70,8 @@ class ProducerTest(_system: ActorSystem)
 
   val settings = ProducerSettings(system, new StringSerializer, new StringSerializer)
 
-  def testProducerFlow[P](mock: ProducerMock[K, V], closeOnStop: Boolean = true): Flow[Message[K, V, P], Result[K, V, P], NotUsed] =
-    Flow.fromGraph(new ProducerStage[K, V, P](settings.closeTimeout, closeOnStop, settings.eosEnabled,
+  def testProducerFlow[P](mock: ProducerMock[K, V], closeOnStop: Boolean = true, eosEnabled: Boolean = false): Flow[Message[K, V, P], Result[K, V, P], NotUsed] =
+    Flow.fromGraph(new ProducerStage[K, V, P](settings.closeTimeout, closeOnStop, eosEnabled,
       settings.eosCommitIntervalMs, () => mock.mock))
       .mapAsync(1)(identity)
 

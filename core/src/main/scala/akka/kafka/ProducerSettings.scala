@@ -56,10 +56,9 @@ object ProducerSettings {
     val closeTimeout = config.getDuration("close-timeout", TimeUnit.MILLISECONDS).millis
     val parallelism = config.getInt("parallelism")
     val dispatcher = config.getString("use-dispatcher")
-    val eosEnabled = config.getBoolean("eos-enabled")
     val eosCommitIntervalMs = config.getLong("eos-commit-interval-ms")
     new ProducerSettings[K, V](properties, keySerializer, valueSerializer, closeTimeout, parallelism, dispatcher,
-      eosEnabled, eosCommitIntervalMs)
+      eosCommitIntervalMs)
   }
 
   /**
@@ -150,7 +149,6 @@ final class ProducerSettings[K, V](
     val closeTimeout: FiniteDuration,
     val parallelism: Int,
     val dispatcher: String,
-    val eosEnabled: Boolean,
     val eosCommitIntervalMs: Long
 ) {
 
@@ -194,9 +192,6 @@ final class ProducerSettings[K, V](
   def withDispatcher(dispatcher: String): ProducerSettings[K, V] =
     copy(dispatcher = dispatcher)
 
-  def withEosEnabled(eosEnabled: Boolean): ProducerSettings[K, V] =
-    copy(eosEnabled = eosEnabled)
-
   def withEosCommitIntervalMs(eosCommitIntervalMs: Long): ProducerSettings[K, V] =
     copy(eosCommitIntervalMs = eosCommitIntervalMs)
 
@@ -207,11 +202,10 @@ final class ProducerSettings[K, V](
     closeTimeout: FiniteDuration = closeTimeout,
     parallelism: Int = parallelism,
     dispatcher: String = dispatcher,
-    eosEnabled: Boolean = eosEnabled,
     eosCommitIntervalMs: Long = eosCommitIntervalMs
   ): ProducerSettings[K, V] =
     new ProducerSettings[K, V](properties, keySerializer, valueSerializer, closeTimeout, parallelism, dispatcher,
-      eosEnabled, eosCommitIntervalMs)
+      eosCommitIntervalMs)
 
   /**
    * Create a `KafkaProducer` instance from the settings.

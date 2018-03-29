@@ -94,13 +94,21 @@ object Producer {
   def transactionalFlow[K, V](settings: ProducerSettings[K, V], transactionalId: String): Flow[Message[K, V, ConsumerMessage.PartitionOffset], Result[K, V, ConsumerMessage.PartitionOffset], NotUsed] = {
     require(transactionalId != null && transactionalId.length > 0, "You must define a Transactional id.")
 
-    val txProducerSettings = settings.withProperties(
+    val txSettings = settings.withProperties(
       ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG -> true.toString,
       ProducerConfig.TRANSACTIONAL_ID_CONFIG -> transactionalId,
       ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION -> 1.toString
-    ).withEosEnabled(true)
+    )
 
-    flow[K, V, ConsumerMessage.PartitionOffset](txProducerSettings)
+    val flow = Flow.fromGraph(new ProducerStage[K, V, ConsumerMessage.PartitionOffset](
+      txSettings.closeTimeout,
+      closeProducerOnStop = true,
+      eosEnabled = true,
+      txSettings.eosCommitIntervalMs,
+      () => txSettings.createKafkaProducer()
+    )).mapAsync(txSettings.parallelism)(identity)
+
+    flowWithDispatcher(txSettings, flow)
   }
 
   /**
@@ -112,13 +120,12 @@ object Producer {
     val flow = Flow.fromGraph(new ProducerStage[K, V, PassThrough](
       settings.closeTimeout,
       closeProducerOnStop = true,
-      settings.eosEnabled,
+      eosEnabled = false,
       settings.eosCommitIntervalMs,
       () => settings.createKafkaProducer()
     )).mapAsync(settings.parallelism)(identity)
 
-    if (settings.dispatcher.isEmpty) flow
-    else flow.withAttributes(ActorAttributes.dispatcher(settings.dispatcher))
+    flowWithDispatcher(settings, flow)
   }
 
   /**
@@ -133,11 +140,15 @@ object Producer {
     val flow = Flow.fromGraph(new ProducerStage[K, V, PassThrough](
       closeTimeout = settings.closeTimeout,
       closeProducerOnStop = false,
-      settings.eosEnabled,
+      eosEnabled = false,
       settings.eosCommitIntervalMs,
       producerProvider = () => producer
     )).mapAsync(settings.parallelism)(identity)
 
+    flowWithDispatcher(settings, flow)
+  }
+
+  private def flowWithDispatcher[PassThrough, V, K](settings: ProducerSettings[K, V], flow: Flow[Message[K, V, PassThrough], Result[K, V, PassThrough], NotUsed]) = {
     if (settings.dispatcher.isEmpty) flow
     else flow.withAttributes(ActorAttributes.dispatcher(settings.dispatcher))
   }
