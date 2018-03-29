@@ -29,7 +29,7 @@ class TransactionsSink extends ConsumerExample {
 class TransactionsFailureRetryExample extends ConsumerExample {
   def main(args: Array[String]): Unit = {
     // #transactionalFailureRetry
-    var innerControl = null.asInstanceOf[Control]
+    var innerControl: Control = null
 
     val stream = RestartSource.onFailuresWithBackoff(
       minBackoff = 1.seconds,
