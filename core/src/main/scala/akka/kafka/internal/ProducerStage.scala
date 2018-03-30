@@ -205,6 +205,7 @@ private[kafka] class ProducerStage[K, V, P](
 
     override def onCompletionSuccess(): Unit = {
       log.debug("Committing final transaction before shutdown")
+      cancelTimer(commitSchedulerKey)
       maybeCommitTransaction(beginNewTransaction = false)
       super.onCompletionSuccess()
     }
@@ -261,7 +262,6 @@ private[kafka] trait MessageCallback[K, V, P] {
 
 private[kafka] object TransactionOffsetBatch {
   def empty: TransactionOffsetBatch = new EmptyTransactionOffsetBatch()
-  def create(partitionOffset: PartitionOffset): NonemptyTransactionOffsetBatch = new NonemptyTransactionOffsetBatch(partitionOffset)
 }
 
 private[kafka] trait TransactionOffsetBatch {
