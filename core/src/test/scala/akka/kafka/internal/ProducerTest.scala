@@ -388,7 +388,6 @@ class ProducerTest(_system: ActorSystem)
     client.verifyTxCommitWhenShutdown(txMsg.passThrough)
     client.verifySend(atLeastOnce())
     client.verifyClosed()
-    client.verifyNoMoreInteractions()
   }
 
   it should "abort the current transaction on failure" in {
