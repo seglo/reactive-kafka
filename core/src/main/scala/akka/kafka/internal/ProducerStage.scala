@@ -261,14 +261,12 @@ private[kafka] object TransactionOffsetBatch {
 }
 
 private[kafka] trait TransactionOffsetBatch {
-  def nonEmpty: Boolean
   def updated(partitionOffset: PartitionOffset): TransactionOffsetBatch
   def group: String
   def offsetMap(): Map[TopicPartition, OffsetAndMetadata]
 }
 
 private[kafka] class EmptyTransactionOffsetBatch extends TransactionOffsetBatch {
-  override def nonEmpty: Boolean = false
   override def updated(partitionOffset: PartitionOffset): TransactionOffsetBatch = new NonemptyTransactionOffsetBatch(partitionOffset)
   override def group: String = throw new IllegalStateException("Empty batch has no group defined")
   override def offsetMap(): Map[TopicPartition, OffsetAndMetadata] = Map[TopicPartition, OffsetAndMetadata]()
@@ -279,8 +277,7 @@ private[kafka] class NonemptyTransactionOffsetBatch(
     tail: Map[GroupTopicPartition, Long] = Map[GroupTopicPartition, Long]())
   extends TransactionOffsetBatch {
   private val offsets = tail + (head.key -> head.offset)
-
-  override def nonEmpty: Boolean = true
+  
   override def group: String = offsets.keys.head.groupId
   override def updated(partitionOffset: PartitionOffset): TransactionOffsetBatch = {
     require(
