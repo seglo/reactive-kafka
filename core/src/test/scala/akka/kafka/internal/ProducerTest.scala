@@ -29,7 +29,6 @@ import org.mockito.Mockito
 import Mockito._
 import akka.kafka.ConsumerMessage.GroupTopicPartition
 import akka.kafka.scaladsl.Producer
-import akka.stream.testkit.TestPublisher
 import org.apache.kafka.clients.consumer.OffsetAndMetadata
 import org.mockito.invocation.InvocationOnMock
 import org.mockito.stubbing.Answer
@@ -360,9 +359,10 @@ class ProducerTest(_system: ActorSystem)
       source.sendNext(txMsg)
       sink.requestNext()
 
-      awaitAssert(client.verifyTxCommit(txMsg.passThrough), 1.second)
+      awaitAssert(client.verifyTxCommit(txMsg.passThrough), 2.second)
 
       source.sendComplete()
+      sink.expectComplete()
     }
   }
 
@@ -382,11 +382,13 @@ class ProducerTest(_system: ActorSystem)
     val txMsg = toTxMessage(input)
     source.sendNext(txMsg)
     sink.requestNext()
-    source.sendComplete()
 
-    client.verifyTxInitialized()
-    client.verifyTxCommitWhenShutdown(txMsg.passThrough)
     client.verifySend(atLeastOnce())
+
+    awaitAssert(client.verifyTxCommitWhenShutdown(txMsg.passThrough), 2.second)
+
+    source.sendComplete()
+    sink.expectComplete()
     client.verifyClosed()
   }
 
@@ -415,11 +417,8 @@ class ProducerTest(_system: ActorSystem)
       case Some(Failure(_)) =>
     }
 
-    client.verifyTxInitialized()
     client.verifyTxAbort()
-    client.verifySend(atLeastOnce())
     client.verifyClosed()
-    client.verifyNoMoreInteractions()
   }
 }
 

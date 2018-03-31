@@ -7,12 +7,10 @@ package akka.kafka.scaladsl
 
 import akka.kafka.ProducerMessage._
 import akka.kafka.internal.ProducerStage
-import akka.kafka.scaladsl.Consumer.Control
-import akka.kafka.{ConsumerMessage, ConsumerSettings, ProducerSettings}
+import akka.kafka.{ConsumerMessage, ProducerSettings}
 import akka.stream.ActorAttributes
 import akka.stream.scaladsl.{Flow, Keep, Sink}
 import akka.{Done, NotUsed}
-import org.apache.kafka.clients.consumer.ConsumerConfig
 import org.apache.kafka.clients.producer.{ProducerConfig, ProducerRecord, Producer => KProducer}
 
 import scala.concurrent.Future

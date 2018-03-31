@@ -157,7 +157,6 @@ private[kafka] class ProducerStage[K, V, P](
     private val commitSchedulerKey = "commit"
     private val messageDrainIntervalMs = 10
 
-    private var isTransactionOpen = false
     private var commitInProgress = false
     private var batchOffsets = TransactionOffsetBatch.empty
 
@@ -171,7 +170,7 @@ private[kafka] class ProducerStage[K, V, P](
     setHandler(out, new OutHandler {
       override def onPull() = {
         // stop pulling while a commit is in process so we can drain any outstanding message acknowledgements
-        if (!commitInProgress) {
+        if (!commitInProgress && !hasBeenPulled(in)) {
           tryPull(in)
         }
       }
@@ -224,7 +223,6 @@ private[kafka] class ProducerStage[K, V, P](
         producer.sendOffsetsToTransaction(offsetMap, group)
         producer.commitTransaction()
         batchOffsets = TransactionOffsetBatch.empty
-        isTransactionOpen = false
         if (beginNewTransaction) {
           beginTransaction()
         }
@@ -239,13 +237,11 @@ private[kafka] class ProducerStage[K, V, P](
     private def beginTransaction(): Unit = {
       log.debug("Beginning new transaction")
       producer.beginTransaction()
-      isTransactionOpen = true
     }
 
     private def abortTransaction(): Unit = {
       log.debug("Aborting transaction")
       producer.abortTransaction()
-      isTransactionOpen = false
     }
   }
 }

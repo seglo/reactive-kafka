@@ -6,7 +6,6 @@
 package akka.kafka.scaladsl
 
 import java.util.UUID
-import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.{ConcurrentLinkedQueue, TimeUnit}
 
 import akka.actor.ActorSystem
@@ -15,8 +14,8 @@ import akka.kafka.ProducerMessage.Message
 import akka.kafka.Subscriptions.TopicSubscription
 import akka.kafka.scaladsl.Consumer.Control
 import akka.kafka.test.Utils._
-import akka.kafka.{ConsumerMessage, ConsumerSettings, ProducerMessage, ProducerSettings}
-import akka.stream.{ActorMaterializer, ActorMaterializerSettings, Attributes, KillSwitches}
+import akka.kafka.{ConsumerSettings, ProducerMessage, ProducerSettings}
+import akka.stream.ActorMaterializer
 import akka.stream.scaladsl.{Keep, RestartSource, Sink, Source}
 import akka.stream.testkit.TestSubscriber
 import akka.stream.testkit.scaladsl.TestSink
@@ -421,7 +420,7 @@ class IntegrationSpec extends TestKit(ActorSystem("IntegrationSpec"))
       }
     }
 
-    "successful consume-transform-produce transaction" in {
+    "complete a consume-transform-produce transaction" in {
       assertAllStagesStopped {
         val sourceTopic = createTopic(1)
         val sinkTopic = createTopic(2)
@@ -462,7 +461,7 @@ class IntegrationSpec extends TestKit(ActorSystem("IntegrationSpec"))
       }
     }
 
-    "successful consume-transform-produce transaction with transient failure causing an abort with restartable source" in {
+    "complete a consume-transform-produce transaction with transient failure causing an abort with restartable source" in {
       assertAllStagesStopped {
         val sourceTopic = createTopic(1)
         val sinkTopic = createTopic(2)

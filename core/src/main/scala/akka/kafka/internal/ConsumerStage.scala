@@ -20,7 +20,6 @@ import akka.stream.stage.{GraphStageLogic, GraphStageWithMaterializedValue}
 import akka.util.Timeout
 import akka.{Done, NotUsed}
 import org.apache.kafka.clients.consumer.{ConsumerConfig, ConsumerRecord}
-import org.apache.kafka.clients.producer.ProducerConfig
 import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.requests.IsolationLevel
 
