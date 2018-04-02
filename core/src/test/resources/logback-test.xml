@@ -6,9 +6,12 @@
     </appender>
 
     <!--<logger name="akka" level="WARN"/>-->
-    <!--<logger name="org.apache.kafka" level="WARN"/>-->
+    <!--<logger name="org.apache.kafka" level="INFO"/>-->
     <!--<logger name="org.apache.kafka.common.utils.AppInfoParser" level="ERROR"/>-->
     <!--<logger name="org.apache.kafka.clients.NetworkClient" level="ERROR"/>-->
+    <!--<logger name="kafka" level="DEBUG" />-->
+    <logger name="kafka.utils.KafkaScheduler" level="DEBUG" />
+    <logger name="kafka.log.LogCleaner" level="DEBUG" />
     <!--<logger name="akka.kafka" level="TRACE"/>-->
 
     <root level="WARN">

@@ -5,7 +5,8 @@
 
 package akka.kafka.scaladsl
 
-import java.util.UUID
+import java.util.{Properties, UUID}
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.{ConcurrentLinkedQueue, TimeUnit}
 
 import akka.actor.ActorSystem
@@ -21,8 +22,10 @@ import akka.stream.testkit.scaladsl.TestSink
 import akka.testkit.TestKit
 import akka.{Done, NotUsed}
 import net.manub.embeddedkafka.{EmbeddedKafka, EmbeddedKafkaConfig}
+import org.apache.kafka.clients.admin._
 import org.apache.kafka.clients.consumer.ConsumerConfig
 import org.apache.kafka.clients.producer.{ProducerConfig, ProducerRecord}
+import org.apache.kafka.common.config.{ConfigResource, TopicConfig}
 import org.apache.kafka.common.serialization.{ByteArrayDeserializer, ByteArraySerializer, StringDeserializer, StringSerializer}
 import org.scalactic.TypeCheckedTripleEquals
 import org.scalatest._
@@ -40,7 +43,11 @@ class IntegrationSpec extends TestKit(ActorSystem("IntegrationSpec"))
   implicit val stageStoppingTimeout = StageStoppingTimeout(15.seconds)
   implicit val mat = ActorMaterializer()(system)
   implicit val ec = system.dispatcher
-  implicit val embeddedKafkaConfig = EmbeddedKafkaConfig(9092, 2181, Map("offsets.topic.replication.factor" -> "1"))
+  implicit val embeddedKafkaConfig = EmbeddedKafkaConfig(9092, 2181, Map(
+    "offsets.topic.replication.factor" -> "1",
+    "log.retention.check.interval.ms" -> "1"
+  ))
+
   val bootstrapServers = s"localhost:${embeddedKafkaConfig.kafkaPort}"
   val InitialMsg = "initial msg in topic, required to create the topic before any consumer subscribes to it"
 
@@ -416,6 +423,78 @@ class IntegrationSpec extends TestKit(ActorSystem("IntegrationSpec"))
         probe1.cancel()
         probe2.cancel()
 
+      }
+    }
+
+    "demonstrate old values of a key get compacted while other keys are unaffected" in {
+      assertAllStagesStopped {
+        val topic1 = createTopic(1)
+
+        val props = new Properties()
+        props.setProperty(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers)
+
+        val adminClient = AdminClient.create(props)
+        val numPartitions = 1
+        val replicationFactor = 1.toShort
+        val newTopic = new NewTopic(topic1, numPartitions, replicationFactor)
+        val configs = Map(
+          TopicConfig.CLEANUP_POLICY_CONFIG -> TopicConfig.CLEANUP_POLICY_COMPACT,
+          TopicConfig.DELETE_RETENTION_MS_CONFIG -> "100",
+          TopicConfig.SEGMENT_MS_CONFIG -> "100"
+        )
+        newTopic.configs(configs.asJava)
+        adminClient.createTopics(List(newTopic).asJavaCollection)
+
+        println(s"$topic1 details:")
+        println(adminClient.describeTopics(List(topic1).asJavaCollection).values().get(topic1).get())
+        val cr = new ConfigResource(ConfigResource.Type.TOPIC, topic1)
+        adminClient.describeConfigs(List(cr).asJavaCollection).values().get(cr).get().entries().asScala.foreach(println)
+
+        val pSettings = ProducerSettings(system, new StringSerializer, new StringSerializer)
+          .withBootstrapServers(bootstrapServers)
+          .withProperties(
+            "batch.size" -> "1"
+          )
+
+        val source = Source(1 to 1000)
+          .mapConcat(n => {
+            if (n <= 10) {
+              List(
+                Message(new ProducerRecord(topic1, partition0, "key0", n.toString), NotUsed),
+                Message(new ProducerRecord(topic1, partition0, "key1", n.toString), NotUsed),
+                Message(new ProducerRecord(topic1, partition0, "key2", n.toString), NotUsed)
+              )
+            } else {
+              val record = new ProducerRecord(topic1, partition0, "key0", n.toString)
+              List(Message(record, NotUsed))
+            }
+          })
+          .viaMat(Producer.flow(pSettings))(Keep.right)
+          .takeWhile(_.message.record.value().toInt <= 1002)
+
+        Await.result(source.runWith(Sink.ignore), remainingOrDefault)
+
+        for (i <- 1 to 3) {
+          // wait an interval for broker LogCleaner
+          Thread.sleep(5000)
+
+          val group1 = createGroup(1)
+          val cSettings = ConsumerSettings(system, new StringDeserializer, new StringDeserializer)
+            .withBootstrapServers("localhost:9092")
+            .withGroupId(group1)
+            .withProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest")
+            .withWakeupTimeout(10 seconds)
+            .withMaxWakeups(10)
+
+          val consumerStream = Consumer.plainSource(cSettings, TopicSubscription(Set(topic1)))
+            .map { r =>
+              println(s"Attempt #$i Compacted msg: ${r.key()}, ${r.value()}")
+              r.value()
+            }
+            .takeWhile(_.toInt < 1000)
+
+          Await.ready(consumerStream.runWith(Sink.ignore), remainingOrDefault)
+        }
       }
     }
   }
