@@ -98,12 +98,11 @@ object Producer {
       ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION -> 1.toString
     )
 
-    val flow = Flow.fromGraph(new ProducerStage[K, V, ConsumerMessage.PartitionOffset](
+    val flow = Flow.fromGraph(new ProducerStage.TransactionProducerStage[K, V, ConsumerMessage.PartitionOffset](
       txSettings.closeTimeout,
       closeProducerOnStop = true,
-      eosEnabled = true,
-      txSettings.eosCommitIntervalMs,
-      () => txSettings.createKafkaProducer()
+      () => txSettings.createKafkaProducer(),
+      settings.eosCommitIntervalMs
     )).mapAsync(txSettings.parallelism)(identity)
 
     flowWithDispatcher(txSettings, flow)
@@ -115,11 +114,9 @@ object Producer {
    * be committed later in the flow.
    */
   def flow[K, V, PassThrough](settings: ProducerSettings[K, V]): Flow[Message[K, V, PassThrough], Result[K, V, PassThrough], NotUsed] = {
-    val flow = Flow.fromGraph(new ProducerStage[K, V, PassThrough](
+    val flow = Flow.fromGraph(new ProducerStage.DefaultProducerStage[K, V, PassThrough](
       settings.closeTimeout,
       closeProducerOnStop = true,
-      eosEnabled = false,
-      settings.eosCommitIntervalMs,
       () => settings.createKafkaProducer()
     )).mapAsync(settings.parallelism)(identity)
 
@@ -135,11 +132,9 @@ object Producer {
     settings: ProducerSettings[K, V],
     producer: KProducer[K, V]
   ): Flow[Message[K, V, PassThrough], Result[K, V, PassThrough], NotUsed] = {
-    val flow = Flow.fromGraph(new ProducerStage[K, V, PassThrough](
+    val flow = Flow.fromGraph(new ProducerStage.DefaultProducerStage[K, V, PassThrough](
       closeTimeout = settings.closeTimeout,
       closeProducerOnStop = false,
-      eosEnabled = false,
-      settings.eosCommitIntervalMs,
       producerProvider = () => producer
     )).mapAsync(settings.parallelism)(identity)
 

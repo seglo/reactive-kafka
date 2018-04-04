@@ -78,9 +78,13 @@ class ProducerTest(_system: ActorSystem)
 
   val settings = ProducerSettings(system, new StringSerializer, new StringSerializer).withEosCommitIntervalMs(10L)
 
-  def testProducerFlow[P](mock: ProducerMock[K, V], closeOnStop: Boolean = true, eosEnabled: Boolean = false): Flow[Message[K, V, P], Result[K, V, P], NotUsed] =
-    Flow.fromGraph(new ProducerStage[K, V, P](settings.closeTimeout, closeOnStop, eosEnabled,
-      settings.eosCommitIntervalMs, () => mock.mock))
+  def testProducerFlow[P](mock: ProducerMock[K, V], closeOnStop: Boolean = true): Flow[Message[K, V, P], Result[K, V, P], NotUsed] =
+    Flow.fromGraph(new ProducerStage.DefaultProducerStage[K, V, P](settings.closeTimeout, closeOnStop, () => mock.mock))
+      .mapAsync(1)(identity)
+
+  def testTransactionProducerFlow[P](mock: ProducerMock[K, V], closeOnStop: Boolean = true): Flow[Message[K, V, P], Result[K, V, P], NotUsed] =
+    Flow.fromGraph(new ProducerStage.TransactionProducerStage[K, V, P](settings.closeTimeout, closeOnStop,
+      () => mock.mock, settings.eosCommitIntervalMs))
       .mapAsync(1)(identity)
 
   "Producer" should "not send messages when source is empty" in {
@@ -331,7 +335,7 @@ class ProducerTest(_system: ActorSystem)
 
       val probe = Source
         .empty[Msg]
-        .via(testProducerFlow(client, eosEnabled = true))
+        .via(testTransactionProducerFlow(client))
         .runWith(TestSink.probe)
 
       probe.request(1)
@@ -351,7 +355,7 @@ class ProducerTest(_system: ActorSystem)
       }
 
       val (source, sink) = TestSource.probe[TxMsg]
-        .via(testProducerFlow(client, eosEnabled = true))
+        .via(testTransactionProducerFlow(client))
         .toMat(TestSink.probe)(Keep.both)
         .run()
 
@@ -375,7 +379,7 @@ class ProducerTest(_system: ActorSystem)
     }
 
     val (source, sink) = TestSource.probe[TxMsg]
-      .via(testProducerFlow(client, eosEnabled = true))
+      .via(testTransactionProducerFlow(client))
       .toMat(TestSink.probe)(Keep.both)
       .run()
 
@@ -401,7 +405,7 @@ class ProducerTest(_system: ActorSystem)
     }
 
     val (source, sink) = TestSource.probe[TxMsg]
-      .via(testProducerFlow(client, eosEnabled = true))
+      .via(testTransactionProducerFlow(client))
       .toMat(Sink.lastOption)(Keep.both)
       .run()
 
