@@ -12,6 +12,7 @@ import akka.kafka.ConsumerMessage
 import akka.kafka.ConsumerMessage.{GroupTopicPartition, PartitionOffset}
 import akka.kafka.ProducerMessage.{Message, Result}
 import akka.stream.ActorAttributes.SupervisionStrategy
+import akka.stream.Supervision.Decider
 import akka.stream._
 import akka.stream.stage._
 import org.apache.kafka.clients.consumer.OffsetAndMetadata
@@ -50,8 +51,8 @@ private[kafka] object ProducerStage {
     val closeProducerOnStop: Boolean
     val producerProvider: () => Producer[K, V]
 
-    val in = Inlet[Message[K, V, P]]("messages")
-    val out = Outlet[Future[Result[K, V, P]]]("result")
+    val in: Inlet[Message[K, V, P]] = Inlet[Message[K, V, P]]("messages")
+    val out: Outlet[Future[Result[K, V, P]]] = Outlet[Future[Result[K, V, P]]]("result")
     val shape = FlowShape(in, out)
   }
 
@@ -62,14 +63,14 @@ private[kafka] object ProducerStage {
       inheritedAttributes: Attributes)
     extends TimerGraphStageLogic(stage.shape) with StageLogging with MessageCallback[K, V, P] with ProducerCompletionState {
 
-    lazy val decider = inheritedAttributes.get[SupervisionStrategy].map(_.decider).getOrElse(Supervision.stoppingDecider)
+    lazy val decider: Decider = inheritedAttributes.get[SupervisionStrategy].map(_.decider).getOrElse(Supervision.stoppingDecider)
     val awaitingConfirmation = new AtomicInteger(0)
     @volatile var inIsClosed = false
     var completionState: Option[Try[Unit]] = None
 
     override protected def logSource: Class[_] = classOf[DefaultProducerStage[_, _, _]]
 
-    def checkForCompletion() = {
+    def checkForCompletion(): Unit = {
       if (isClosed(stage.in) && awaitingConfirmation.get == 0) {
         completionState match {
           case Some(Success(_)) => onCompletionSuccess()
@@ -83,30 +84,30 @@ private[kafka] object ProducerStage {
 
     override def onCompletionFailure(ex: Throwable): Unit = failStage(ex)
 
-    val checkForCompletionCB = getAsyncCallback[Unit] { _ =>
+    val checkForCompletionCB: AsyncCallback[Unit] = getAsyncCallback[Unit] { _ =>
       checkForCompletion()
     }
 
-    val failStageCb = getAsyncCallback[Throwable] { ex =>
+    val failStageCb: AsyncCallback[Throwable] = getAsyncCallback[Throwable] { ex =>
       failStage(ex)
     }
 
     override val onMessageAckCb: AsyncCallback[Message[K, V, P]] = getAsyncCallback[Message[K, V, P]] { _ => }
 
     setHandler(stage.out, new OutHandler {
-      override def onPull() = tryPull(stage.in)
+      override def onPull(): Unit = tryPull(stage.in)
     })
 
     setHandler(stage.in, new InHandler {
-      override def onPush() = produce(grab(stage.in))
+      override def onPush(): Unit = produce(grab(stage.in))
 
-      override def onUpstreamFinish() = {
+      override def onUpstreamFinish(): Unit = {
         inIsClosed = true
         completionState = Some(Success(()))
         checkForCompletion()
       }
 
-      override def onUpstreamFailure(ex: Throwable) = {
+      override def onUpstreamFailure(ex: Throwable): Unit = {
         inIsClosed = true
         completionState = Some(Failure(ex))
         checkForCompletion()
@@ -116,7 +117,7 @@ private[kafka] object ProducerStage {
     def produce(msg: Message[K, V, P]): Unit = {
       val r = Promise[Result[K, V, P]]
       producer.send(msg.record, new Callback {
-        override def onCompletion(metadata: RecordMetadata, exception: Exception) = {
+        override def onCompletion(metadata: RecordMetadata, exception: Exception): Unit = {
           if (exception == null) {
             onMessageAckCb.invoke(msg)
             r.success(Result(metadata, msg))
@@ -141,7 +142,7 @@ private[kafka] object ProducerStage {
       push(stage.out, r.future)
     }
 
-    override def postStop() = {
+    override def postStop(): Unit = {
       log.debug("Stage completed")
 
       if (stage.closeProducerOnStop) {
@@ -169,7 +170,7 @@ private[kafka] object ProducerStage {
     private val commitSchedulerKey = "commit"
     private val messageDrainIntervalMs = 10
 
-    private var batchOffsets = TransactionOffsetBatch.empty
+    private var batchOffsets = TransactionBatch.empty
 
     override def preStart(): Unit = {
       initTransactions()
@@ -180,7 +181,7 @@ private[kafka] object ProducerStage {
 
     private def resumeDemand(tryToPull: Boolean = true): Unit = {
       setHandler(stage.out, new OutHandler {
-        override def onPull() = tryPull(stage.in)
+        override def onPull(): Unit = tryPull(stage.in)
       })
       // kick off demand for more messages if we're resuming demand
       if (tryToPull && !hasBeenPulled(stage.in)) {
@@ -190,24 +191,26 @@ private[kafka] object ProducerStage {
 
     private def suspendDemand(): Unit = setHandler(stage.out, new OutHandler {
       // suspend demand while a commit is in process so we can drain any outstanding message acknowledgements
-      override def onPull() = ()
+      override def onPull(): Unit = ()
     })
 
     override protected def onTimer(timerKey: Any): Unit =
       if (timerKey == commitSchedulerKey) {
-        onCommitInterval()
-      }
-
-    private def onCommitInterval(): Unit = {
-
-      suspendDemand()
-      if (awaitingConfirmation.get == 0) {
         maybeCommitTransaction()
-        resumeDemand()
-        scheduleOnce(commitSchedulerKey, commitIntervalMs.milliseconds)
       }
-      else {
-        scheduleOnce(commitSchedulerKey, messageDrainIntervalMs.milliseconds)
+
+    private def maybeCommitTransaction(beginNewTransaction: Boolean = true): Unit = {
+      val awaitingConf = awaitingConfirmation.get
+      batchOffsets match {
+        case batch: NonemptyTransactionBatch if awaitingConf == 0 =>
+          commitTransaction(batch, beginNewTransaction)
+          resumeDemand()
+          scheduleOnce(commitSchedulerKey, commitIntervalMs.milliseconds)
+        case _ if awaitingConf > 0 =>
+          suspendDemand()
+          scheduleOnce(commitSchedulerKey, messageDrainIntervalMs.milliseconds)
+        case _ =>
+          scheduleOnce(commitSchedulerKey, commitIntervalMs.milliseconds)
       }
     }
 
@@ -230,18 +233,16 @@ private[kafka] object ProducerStage {
       super.onCompletionFailure(ex)
     }
 
-    private def maybeCommitTransaction(beginNewTransaction: Boolean = true): Unit = batchOffsets match {
-      case batch: NonemptyTransactionOffsetBatch =>
-        val group = batch.group
-        val offsetMap = batch.offsetMap().asJava
-        log.debug(s"Committing transaction for consumer group '$group' with offsets: $offsetMap")
-        producer.sendOffsetsToTransaction(offsetMap, group)
-        producer.commitTransaction()
-        batchOffsets = TransactionOffsetBatch.empty
-        if (beginNewTransaction) {
-          beginTransaction()
-        }
-      case _ =>
+    private def commitTransaction(batch: NonemptyTransactionBatch, beginNewTransaction: Boolean): Unit = {
+      val group = batch.group
+      val offsetMap = batch.offsetMap().asJava
+      log.debug(s"Committing transaction for consumer group '$group' with offsets: $offsetMap")
+      producer.sendOffsetsToTransaction(offsetMap, group)
+      producer.commitTransaction()
+      batchOffsets = TransactionBatch.empty
+      if (beginNewTransaction) {
+        beginTransaction()
+      }
     }
 
     private def initTransactions(): Unit = {
@@ -270,35 +271,34 @@ private[kafka] object ProducerStage {
     def onMessageAckCb: AsyncCallback[Message[K, V, P]]
   }
 
-  object TransactionOffsetBatch {
-    def empty: TransactionOffsetBatch = new EmptyTransactionOffsetBatch()
+  object TransactionBatch {
+    def empty: TransactionBatch = new EmptyTransactionBatch()
   }
 
-  trait TransactionOffsetBatch {
-    def updated(partitionOffset: PartitionOffset): TransactionOffsetBatch
+  trait TransactionBatch {
+    def updated(partitionOffset: PartitionOffset): TransactionBatch
   }
 
-  class EmptyTransactionOffsetBatch extends TransactionOffsetBatch {
-    override def updated(partitionOffset: PartitionOffset): TransactionOffsetBatch = new NonemptyTransactionOffsetBatch(partitionOffset)
+  class EmptyTransactionBatch extends TransactionBatch {
+    override def updated(partitionOffset: PartitionOffset): TransactionBatch = new NonemptyTransactionBatch(partitionOffset)
   }
 
-  class NonemptyTransactionOffsetBatch(
+  class NonemptyTransactionBatch(
       head: PartitionOffset,
       tail: Map[GroupTopicPartition, Long] = Map[GroupTopicPartition, Long]())
-    extends TransactionOffsetBatch {
+    extends TransactionBatch {
     private val offsets = tail + (head.key -> head.offset)
 
     def group: String = offsets.keys.head.groupId
-    override def updated(partitionOffset: PartitionOffset): TransactionOffsetBatch = {
+    def offsetMap(): Map[TopicPartition, OffsetAndMetadata] = offsets.map {
+      case (gtp, offset) => new TopicPartition(gtp.topic, gtp.partition) -> new OffsetAndMetadata(offset + 1)
+    }
+
+    override def updated(partitionOffset: PartitionOffset): TransactionBatch = {
       require(
         group == partitionOffset.key.groupId,
         s"Transaction batch must contain messages from exactly 1 consumer group. $group != ${partitionOffset.key.groupId}")
-      new NonemptyTransactionOffsetBatch(partitionOffset, offsets)
+      new NonemptyTransactionBatch(partitionOffset, offsets)
     }
-    def offsetMap(): Map[TopicPartition, OffsetAndMetadata] =
-      offsets.map {
-        case (gtp, offset) => new TopicPartition(gtp.topic, gtp.partition) -> new OffsetAndMetadata(offset + 1)
-      }
   }
-
 }
