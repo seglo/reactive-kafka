@@ -204,8 +204,6 @@ private[kafka] object ProducerStage {
       batchOffsets match {
         case batch: NonemptyTransactionBatch if awaitingConf == 0 =>
           commitTransaction(batch, beginNewTransaction)
-          resumeDemand()
-          scheduleOnce(commitSchedulerKey, commitIntervalMs.milliseconds)
         case _ if awaitingConf > 0 =>
           suspendDemand()
           scheduleOnce(commitSchedulerKey, messageDrainIntervalMs.milliseconds)
@@ -242,6 +240,8 @@ private[kafka] object ProducerStage {
       batchOffsets = TransactionBatch.empty
       if (beginNewTransaction) {
         beginTransaction()
+        resumeDemand()
+        scheduleOnce(commitSchedulerKey, commitIntervalMs.milliseconds)
       }
     }
 
