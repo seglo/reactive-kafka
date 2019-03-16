@@ -5,11 +5,37 @@
 
 package akka.kafka
 
+import java.time.Duration
+
 import akka.actor.ActorRef
+import org.apache.kafka.clients.consumer.{Consumer, OffsetAndMetadata}
 import org.apache.kafka.common.TopicPartition
 
 import scala.annotation.varargs
 import scala.collection.JavaConverters._
+
+object RebalanceStrategy {
+  trait Contract {
+    def onAssign(consumer: Consumer[_, _], timeout: java.time.Duration, partitions: List[TopicPartition]): Unit = {}
+    def onRevoke(consumer: Consumer[_, _], timeout: java.time.Duration, partitions: List[TopicPartition], partitionOffsetPositions: Map[TopicPartition, Long]): Unit = {}
+  }
+
+  def CommitPositionOnPartitionRevoked: Contract = new CommitPositionOnPartitionRevoked
+
+  class CommitPositionOnPartitionRevoked extends Contract {
+    override def onRevoke(
+                           consumer: Consumer[_, _],
+                           timeout: Duration,
+                           partitions: List[TopicPartition],
+                           partitionOffsetPositions: Map[TopicPartition, Long]
+                         ): Unit = {
+      super.onRevoke(consumer, timeout, partitions, partitionOffsetPositions)
+      val offsets = partitionOffsetPositions.mapValues(offset => new OffsetAndMetadata(offset)).asJava
+      consumer.commitSync(offsets, timeout)
+    }
+  }
+
+}
 
 sealed trait Subscription {
 
@@ -41,6 +67,8 @@ sealed trait AutoSubscription extends Subscription {
   /** Configure this actor ref to receive [[akka.kafka.ConsumerRebalanceEvent]] signals */
   def withRebalanceListener(ref: ActorRef): AutoSubscription
 
+  def withRebalanceStrategy(strategy: RebalanceStrategy.Contract): AutoSubscription
+
   override protected def renderListener: String =
     rebalanceListener match {
       case Some(ref) => s" rebalanceListener $ref"
@@ -58,10 +86,14 @@ object Subscriptions {
 
   /** INTERNAL API */
   @akka.annotation.InternalApi
-  private[kafka] final case class TopicSubscription(tps: Set[String], rebalanceListener: Option[ActorRef])
+  private[kafka] final case class TopicSubscription(tps: Set[String], rebalanceListener: Option[ActorRef], rebalanceStrategies: List[RebalanceStrategy.Contract] = List())
       extends AutoSubscription {
     def withRebalanceListener(ref: ActorRef): TopicSubscription =
-      TopicSubscription(tps, Some(ref))
+      TopicSubscription(tps, Some(ref), rebalanceStrategies)
+
+    def withRebalanceStrategy(strategy: RebalanceStrategy.Contract): TopicSubscription =
+      this.copy(rebalanceStrategies = rebalanceStrategies :+ strategy)
+
     def renderStageAttribute: String = s"${tps.mkString(" ")}$renderListener"
   }
 
@@ -72,6 +104,9 @@ object Subscriptions {
     def withRebalanceListener(ref: ActorRef): TopicSubscriptionPattern =
       TopicSubscriptionPattern(pattern, Some(ref))
     def renderStageAttribute: String = s"pattern $pattern$renderListener"
+    override def withRebalanceStrategy(
+        strategy: RebalanceStrategy.Contract
+    ): AutoSubscription = ???
   }
 
   /** INTERNAL API */

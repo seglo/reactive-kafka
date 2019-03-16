@@ -66,7 +66,7 @@ import scala.concurrent.{Future, Promise}
     }
 
     subscription match {
-      case sub @ TopicSubscription(topics, _) =>
+      case sub @ TopicSubscription(topics, _, _) =>
         consumerActor.tell(KafkaConsumerActor.Internal.Subscribe(topics, rebalanceListener(sub)), sourceActor.ref)
       case sub @ TopicSubscriptionPattern(topics, _) =>
         consumerActor.tell(KafkaConsumerActor.Internal.SubscribePattern(topics, rebalanceListener(sub)),

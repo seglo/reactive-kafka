@@ -19,7 +19,7 @@ import akka.stream.testkit.scaladsl.TestSink
 import akka.testkit.TestProbe
 import akka.util.Timeout
 import net.manub.embeddedkafka.EmbeddedKafkaConfig
-import org.apache.kafka.clients.consumer.ConsumerConfig
+import org.apache.kafka.clients.consumer.{ConsumerConfig, OffsetAndMetadata}
 import org.apache.kafka.clients.producer.{ProducerConfig, ProducerRecord}
 import org.apache.kafka.common.{Metric, MetricName, TopicPartition}
 import org.scalatest._
@@ -198,6 +198,98 @@ class IntegrationSpec extends SpecBase(kafkaPort = KafkaPorts.IntegrationSpec) w
       rebalanceActor1.expectMsg(TopicPartitionsAssigned(subscription1, Set(allTps(0), allTps(1))))
       rebalanceActor2.expectMsg(TopicPartitionsRevoked(subscription2, Set.empty))
       rebalanceActor2.expectMsg(TopicPartitionsAssigned(subscription2, Set(allTps(2), allTps(3))))
+
+      createAndRunProducer(totalMessages / 2 until totalMessages).futureValue
+
+      counterCompletion.futureValue shouldBe totalMessages
+
+      val stream1messages = control.drainAndShutdown().futureValue
+      val stream2messages = control2.drainAndShutdown().futureValue
+      stream1messages + stream2messages shouldBe totalMessages
+    }
+
+    "use partition revoked subscription strategy" in assertAllStagesStopped {
+      val partitions = 4
+      val totalMessages = 200L
+
+      val topic = createTopic(1, partitions)
+      val allTps = (0 until partitions).map(p => new TopicPartition(topic, p))
+      val group = createGroupId(1)
+      val sourceSettings = consumerDefaults
+        .withProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest")
+        .withGroupId(group)
+
+      val rebalanceActor1 = TestProbe()
+      val rebalanceActor2 = TestProbe()
+
+      val (counterQueue, counterCompletion) = Source
+        .queue[String](8, OverflowStrategy.fail)
+        .scan(0L)((c, _) => c + 1)
+        .takeWhile(_ < totalMessages, inclusive = true)
+        .toMat(Sink.last)(Keep.both)
+        .run()
+
+      val topicSubscription = Subscriptions.topics(topic).withRebalanceStrategy(RebalanceStrategy.CommitPositionOnPartitionRevoked)
+      val subscription1 = topicSubscription.withRebalanceListener(rebalanceActor1.ref)
+      val subscription2 = topicSubscription.withRebalanceListener(rebalanceActor2.ref)
+
+      def createAndRunConsumer(subscription: Subscription) =
+        Consumer
+          .committableSource(sourceSettings, subscription)
+          .mapAsync(1)(msg => counterQueue.offer(msg.record.value()).map(_ => msg.record.value()))
+          .scan(0L)((c, _) => c + 1)
+          .toMat(Sink.last)(Keep.both)
+          .mapMaterializedValue(DrainingControl.apply)
+          .run()
+
+      def createAndRunConsumerWithCommits(subscription: Subscription) =
+        Consumer
+          .committableSource(sourceSettings, subscription)
+          .mapAsync(1) { msg =>
+            msg.committableOffset.commitScaladsl()
+            counterQueue.offer(msg.record.value()).map(_ => msg.record.value())
+          }
+          .scan(0L)((c, _) => c + 1)
+          .toMat(Sink.last)(Keep.both)
+          .mapMaterializedValue(DrainingControl.apply)
+          .run()
+
+      def createAndRunProducer(elements: immutable.Iterable[Long]) =
+        Source(elements)
+          .map(n => new ProducerRecord(topic, (n % partitions).toInt, DefaultKey, n.toString))
+          .runWith(Producer.plainSink(producerDefaults, testProducer))
+
+      val control = createAndRunConsumer(subscription1)
+
+      // waits until all partitions are assigned to the single consumer
+      waitUntilConsumerSummary(group, timeout = 5.seconds) {
+        case singleConsumer :: Nil => singleConsumer.assignment.topicPartitions.size == partitions
+      }
+
+      // waits until all partition offsets have an even distribution of committed offsets of 50 (totalMessages / partitions)
+      waitUntilConsumerGroupOffsets(group, timeout = 10.seconds) { offsets: Map[TopicPartition, OffsetAndMetadata] =>
+        offsets.values.forall(_.offset() == totalMessages / partitions)
+      }
+
+//      rebalanceActor1.expectMsg(TopicPartitionsRevoked(subscription1, Set.empty))
+//      rebalanceActor1.expectMsg(TopicPartitionsAssigned(subscription1, Set(allTps: _*)))
+
+      createAndRunProducer(0L until totalMessages / 2).futureValue
+
+      // create another consumer with the same groupId to trigger re-balancing
+      val control2 = createAndRunConsumer(subscription2)
+
+      // waits until partitions are assigned across both consumers
+      waitUntilConsumerSummary(group, timeout = 10.seconds) {
+        case consumer1 :: consumer2 :: Nil =>
+          val half = partitions / 2
+          consumer1.assignment.topicPartitions.size == half && consumer2.assignment.topicPartitions.size == half
+      }
+
+//      rebalanceActor1.expectMsg(TopicPartitionsRevoked(subscription1, Set(allTps: _*)))
+//      rebalanceActor1.expectMsg(TopicPartitionsAssigned(subscription1, Set(allTps(0), allTps(1))))
+//      rebalanceActor2.expectMsg(TopicPartitionsRevoked(subscription2, Set.empty))
+//      rebalanceActor2.expectMsg(TopicPartitionsAssigned(subscription2, Set(allTps(2), allTps(3))))
 
       createAndRunProducer(totalMessages / 2 until totalMessages).futureValue
 

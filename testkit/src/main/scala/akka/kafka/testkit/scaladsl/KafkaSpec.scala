@@ -23,13 +23,14 @@ import akka.stream.{ActorMaterializer, Materializer}
 import akka.testkit.TestKit
 import net.manub.embeddedkafka.{EmbeddedKafka, EmbeddedKafkaConfig}
 import org.apache.kafka.clients.admin._
-import org.apache.kafka.clients.producer.{Producer => KProducer, ProducerRecord}
-import org.apache.kafka.common.ConsumerGroupState
+import org.apache.kafka.clients.consumer.OffsetAndMetadata
+import org.apache.kafka.clients.producer.{ProducerRecord, Producer => KProducer}
+import org.apache.kafka.common.{ConsumerGroupState, TopicPartition}
 import org.slf4j.{Logger, LoggerFactory}
 
 import scala.annotation.tailrec
 import scala.collection.JavaConverters._
-import scala.collection.immutable
+import scala.collection.{immutable, mutable}
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
@@ -137,6 +138,31 @@ abstract class KafkaSpec(val kafkaPort: Int, val zooKeeperPort: Int, actorSystem
           .describedGroups()
           .get(groupId)
           .get(timeout.toMillis, TimeUnit.MILLISECONDS)
+    )(predicate)
+  }
+
+  /**
+    * Periodically checks if the given predicate on consumer group offset state holds.
+    *
+    * If the predicate does not hold after `maxTries`, throws an exception.
+    */
+  def waitUntilConsumerGroupOffsets(
+                              groupId: String,
+                              timeout: Duration = 1.second,
+                              sleepInBetween: FiniteDuration = 100.millis
+                            )(predicate: Map[TopicPartition, OffsetAndMetadata] => Boolean): Unit = {
+    val admin = adminClient
+    periodicalCheck("consumer group offset state", (timeout / sleepInBetween).toInt, sleepInBetween)(
+      () =>
+      admin
+        .listConsumerGroupOffsets(
+          groupId,
+          new ListConsumerGroupOffsetsOptions().timeoutMs(timeout.toMillis.toInt)
+        )
+        .partitionsToOffsetAndMetadata()
+        .get(timeout.toMillis, TimeUnit.MILLISECONDS)
+        .asScala
+        .toMap
     )(predicate)
   }
 
