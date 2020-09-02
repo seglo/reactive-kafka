@@ -10,6 +10,7 @@ import java.util.concurrent.CompletionStage
 import akka.Done
 import akka.actor.{ActorSystem, ClassicActorSystemProvider}
 import akka.kafka.ProducerMessage._
+import akka.kafka.scaladsl.AdaptedActorSystem
 import akka.kafka.{scaladsl, ProducerSettings}
 import org.apache.kafka.clients.producer.{ProducerRecord, RecordMetadata}
 
@@ -26,8 +27,9 @@ final class SendProducer[K, V] private (underlying: scaladsl.SendProducer[K, V])
    *
    * The internal asynchronous operations run on the provided `Executor` (which may be an `ActorSystem`'s dispatcher).
    */
-  def this(settings: ProducerSettings[K, V], system: ActorSystem) =
-    this(scaladsl.SendProducer(settings, system))
+  def this(settings: ProducerSettings[K, V], system: ActorSystem) = {
+    this(scaladsl.SendProducer(settings)(AdaptedActorSystem.fromClassic(system)))
+  }
 
   /**
    * Utility class for producing to Kafka without using Akka Streams.
@@ -36,7 +38,7 @@ final class SendProducer[K, V] private (underlying: scaladsl.SendProducer[K, V])
    * The internal asynchronous operations run on the provided `Executor` (which may be an `ActorSystem`'s dispatcher).
    */
   def this(settings: ProducerSettings[K, V], system: ClassicActorSystemProvider) =
-    this(scaladsl.SendProducer(settings, system.classicSystem))
+    this(scaladsl.SendProducer(settings)(AdaptedActorSystem.fromClassicActorSystemProvider(system)))
 
   /**
    * Send records to Kafka topics and complete a future with the result.

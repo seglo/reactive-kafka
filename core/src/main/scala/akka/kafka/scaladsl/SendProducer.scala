@@ -95,11 +95,20 @@ final class SendProducer[K, V] private (val settings: ProducerSettings[K, V], sy
   override def toString: String = s"SendProducer($settings)"
 }
 
-object SendProducer {
-  def apply[K, V](settings: ProducerSettings[K, V])(implicit system: ClassicActorSystemProvider): SendProducer[K, V] =
-    new SendProducer(settings, system.classicSystem)
+object AdaptedActorSystem {
+  implicit def fromClassic(implicit system: ActorSystem) = AdaptedActorSystem(Left(system))
+  implicit def fromClassicActorSystemProvider(implicit system: ClassicActorSystemProvider) =
+    AdaptedActorSystem(Right(system))
+}
 
-  // kept for bin-compatibility
-  def apply[K, V](settings: ProducerSettings[K, V], system: ActorSystem): SendProducer[K, V] =
-    new SendProducer(settings, system)
+case class AdaptedActorSystem(e: Either[ActorSystem, ClassicActorSystemProvider])
+
+object SendProducer {
+  def apply[K, V](settings: ProducerSettings[K, V])(implicit system: AdaptedActorSystem): SendProducer[K, V] = {
+    val classicSystem = system.e match {
+      case Left(system) => system
+      case Right(system) => system.classicSystem
+    }
+    new SendProducer(settings, classicSystem)
+  }
 }
