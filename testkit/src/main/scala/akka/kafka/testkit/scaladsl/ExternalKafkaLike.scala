@@ -38,73 +38,72 @@ trait ExternalKafkaLike extends KafkaSpec with KafkaTestKit with BeforeAndAfterE
                            partitions: Int,
                            replication: Int,
                            config: java.util.Map[String, String]): String =
-    if (externalSettings.enabled) {
-      val topic = super.createTopic(suffix, partitions, replication, config)
-      topicsCreated.add(topic)
-      topic
-    } else
+    enabledOrElse(
+      {
+        val topic = super.createTopic(suffix, partitions, replication, config)
+        topicsCreated.add(topic)
+        topic
+      },
       super.createTopic(suffix, partitions, replication, config)
+    )
 
-  override def setUp(): Unit =
-    if (externalSettings.enabled)
-      setUpClients()
-    else
-      super.setUp()
+  override def setUp(): Unit = enabledOrElse(
+    setUpClients(),
+    super.setUp()
+  )
 
-  override def cleanUp(): Unit =
-    if (externalSettings.enabled)
-      cleanUpClients()
-    else
-      super.cleanUp()
+  override def cleanUp(): Unit = enabledOrElse(
+    cleanUpClients(),
+    super.cleanUp()
+  )
 
-  override def afterEach(): Unit = {
-    if (externalSettings.enabled) {
-      super.afterEach()
-      adminClient.deleteTopics(topicsCreated)
-      topicsCreated.clear()
-    }
+  override def afterEach(): Unit = enabled {
+    super.afterEach()
+    adminClient.deleteTopics(topicsCreated)
+    topicsCreated.clear()
   }
 
   override def adminClientDefaults: util.Map[String, AnyRef] =
-    if (externalSettings.enabled) {
+    enabledOrElse({
       val config = new java.util.HashMap[String, AnyRef]()
       config.putAll(externalSettings.adminClientProperties.asJava)
       config
-    } else {
-      super.adminClientDefaults
-    }
+    }, super.adminClientDefaults)
 
   override def producerDefaults[K, V](keySerializer: Serializer[K],
-                                      valueSerializer: Serializer[V]): ProducerSettings[K, V] =
-    if (externalSettings.enabled)
-      ProducerSettings(system, keySerializer, valueSerializer)
-        .withBootstrapServers(externalSettings.bootstrapServers)
-    else
-      super.producerDefaults(keySerializer, valueSerializer)
+                                      valueSerializer: Serializer[V]): ProducerSettings[K, V] = enabledOrElse(
+    ProducerSettings(system, keySerializer, valueSerializer)
+      .withBootstrapServers(externalSettings.bootstrapServers),
+    super.producerDefaults(keySerializer, valueSerializer)
+  )
 
   //.withProperty(ProducerConfig.RETRIES_CONFIG, "0")
   //.withProperty(ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, "1")
   //.withProperty(ProducerConfig.ACKS_CONFIG, "all")
   //.withProperty(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, "true")
 
-  override def producerDefaults: ProducerSettings[String, String] =
-    if (externalSettings.enabled)
-      producerDefaults(StringSerializer, StringSerializer)
-    else
-      super.producerDefaults
+  override def producerDefaults: ProducerSettings[String, String] = enabledOrElse(
+    producerDefaults(StringSerializer, StringSerializer),
+    super.producerDefaults
+  )
 
-  override def consumerDefaults: ConsumerSettings[String, String] =
-    if (externalSettings.enabled)
-      consumerDefaults(StringDeserializer, StringDeserializer)
-    else
-      super.consumerDefaults
+  override def consumerDefaults: ConsumerSettings[String, String] = enabledOrElse(
+    consumerDefaults(StringDeserializer, StringDeserializer),
+    super.consumerDefaults
+  )
 
   override def consumerDefaults[K, V](keyDeserializer: Deserializer[K],
-                                      valueDeserializer: Deserializer[V]): ConsumerSettings[K, V] =
-    if (externalSettings.enabled)
-      ConsumerSettings(system, keyDeserializer, valueDeserializer)
-        .withBootstrapServers(externalSettings.bootstrapServers)
-        .withProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest")
-    else
-      super.consumerDefaults(keyDeserializer, valueDeserializer)
+                                      valueDeserializer: Deserializer[V]): ConsumerSettings[K, V] = enabledOrElse(
+    ConsumerSettings(system, keyDeserializer, valueDeserializer)
+      .withBootstrapServers(externalSettings.bootstrapServers)
+      .withProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest"),
+    super.consumerDefaults(keyDeserializer, valueDeserializer)
+  )
+
+  private def enabled(_enabled: => Unit): Unit =
+    if (externalSettings.enabled) _enabled
+
+  private def enabledOrElse[T](enabled: => T, default: => T): T =
+    if (externalSettings.enabled) enabled
+    else default
 }
