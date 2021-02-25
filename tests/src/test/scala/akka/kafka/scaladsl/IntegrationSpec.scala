@@ -11,7 +11,7 @@ import akka.Done
 import akka.kafka.ConsumerMessage.CommittableOffsetBatch
 import akka.kafka._
 import akka.kafka.scaladsl.Consumer.DrainingControl
-import akka.kafka.testkit.scaladsl.TestcontainersKafkaLike
+import akka.kafka.testkit.scaladsl.{ExternalKafkaLike, TestcontainersKafkaLike}
 import akka.pattern.ask
 import akka.stream.scaladsl.{Keep, Sink, Source}
 import akka.stream.testkit.scaladsl.StreamTestKit.assertAllStagesStopped
@@ -28,7 +28,7 @@ import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
 import scala.util.Success
 
-class IntegrationSpec extends SpecBase with TestcontainersKafkaLike with Inside {
+class IntegrationSpec extends SpecBase with TestcontainersKafkaLike with ExternalKafkaLike with Inside {
 
   implicit val patience = PatienceConfig(30.seconds, 500.millis)
 

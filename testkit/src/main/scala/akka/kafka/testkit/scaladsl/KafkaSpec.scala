@@ -51,12 +51,16 @@ abstract class KafkaSpec(_kafkaPort: Int, val zooKeeperPort: Int, actorSystem: A
 
   var testProducer: KProducer[String, String] = _
 
-  def setUp(): Unit = {
+  def setUp(): Unit = setUpClients()
+
+  def setUpClients(): Unit = {
     testProducer = Await.result(producerDefaults.createKafkaProducerAsync(), 2.seconds)
     setUpAdminClient()
   }
 
-  def cleanUp(): Unit = {
+  def cleanUp(): Unit = cleanUpClients()
+
+  def cleanUpClients(): Unit = {
     if (testProducer ne null) testProducer.close(Duration.ofSeconds(60))
     cleanUpAdminClient()
     TestKit.shutdownActorSystem(system)

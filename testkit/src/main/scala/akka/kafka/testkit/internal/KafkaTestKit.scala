@@ -6,9 +6,9 @@
 package akka.kafka.testkit.internal
 
 import java.time.Duration
+import java.util.Arrays
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
-import java.util.Arrays
 
 import akka.actor.ActorSystem
 import akka.kafka.testkit.KafkaTestkitSettings
@@ -84,7 +84,7 @@ trait KafkaTestKit {
 
   val settings = KafkaTestkitSettings(system)
 
-  private lazy val adminDefaults: java.util.Map[String, AnyRef] = {
+  protected def adminClientDefaults: java.util.Map[String, AnyRef] = {
     val config = new java.util.HashMap[String, AnyRef]()
     config.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers)
     config
@@ -110,7 +110,7 @@ trait KafkaTestKit {
    */
   def setUpAdminClient(): Unit =
     if (adminClientVar == null) {
-      adminClientVar = Admin.create(adminDefaults)
+      adminClientVar = Admin.create(adminClientDefaults)
     }
 
   /**

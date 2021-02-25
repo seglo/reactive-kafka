@@ -12,7 +12,8 @@ import scala.concurrent.duration._
 
 class KafkaTestkitSettings private (val clusterTimeout: FiniteDuration,
                                     val consumerGroupTimeout: FiniteDuration,
-                                    val checkInterval: FiniteDuration) {
+                                    val checkInterval: FiniteDuration,
+                                    val externalKafkaSettings: ExternalKafkaSettings) {
 
   /**
    * Java Api
@@ -28,6 +29,11 @@ class KafkaTestkitSettings private (val clusterTimeout: FiniteDuration,
    * Java Api
    */
   def getCheckInterval(): java.time.Duration = java.time.Duration.ofMillis(checkInterval.toMillis)
+
+  /**
+   * Java Api
+   */
+  def getExternalKafkaSettings(): ExternalKafkaSettings = externalKafkaSettings;
 }
 
 object KafkaTestkitSettings {
@@ -53,8 +59,9 @@ object KafkaTestkitSettings {
     val clusterTimeout = config.getDuration("cluster-timeout").toMillis.millis
     val consumerGroupTimeout = config.getDuration("consumer-group-timeout").toMillis.millis
     val checkInterval = config.getDuration("check-interval").toMillis.millis
+    val externalKafkaSettings = ExternalKafkaSettings(config.getConfig("external-kafka"))
 
-    new KafkaTestkitSettings(clusterTimeout, consumerGroupTimeout, checkInterval)
+    new KafkaTestkitSettings(clusterTimeout, consumerGroupTimeout, checkInterval, externalKafkaSettings)
   }
 
   /**
