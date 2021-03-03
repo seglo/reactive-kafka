@@ -7,13 +7,12 @@ package akka.kafka.benchmarks
 
 import java.time.Duration
 import java.util
+import java.util.UUID
 import java.util.concurrent.TimeUnit
-import java.util.{Arrays, UUID}
 
 import akka.kafka.ProducerSettings
 import akka.kafka.testkit.internal.KafkaTestKit
 import com.typesafe.scalalogging.LazyLogging
-import org.apache.kafka.clients.admin.NewTopic
 import org.apache.kafka.clients.consumer.ConsumerConfig
 import org.apache.kafka.clients.producer._
 import org.apache.kafka.common.serialization.{
@@ -88,14 +87,10 @@ private[benchmarks] trait PerfFixtureHelpers extends LazyLogging {
   }
 
   private def createTopicAndFill(ft: FilledTopic, kafkaTestKit: KafkaTestKit): Producer[Array[Byte], String] = {
-    val admin = kafkaTestKit.adminClient
-    val result = admin.createTopics(
-      Arrays.asList(
-        new NewTopic(ft.topic, ft.numberOfPartitions, ft.replicationFactor.toShort)
-          .configs(new util.HashMap[String, String]())
-      )
-    )
-    result.all().get(10, TimeUnit.SECONDS)
+    kafkaTestKit.createTopicWithName(ft.topic,
+                                     ft.numberOfPartitions,
+                                     ft.replicationFactor,
+                                     new util.HashMap[String, String]())
     // fill topic with messages
     val producer = kafkaTestKit.producerDefaults(new ByteArraySerializer, new StringSerializer).createKafkaProducer()
     val lastElementStoredPromise = Promise[Unit]()

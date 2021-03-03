@@ -174,6 +174,33 @@ trait KafkaTestKit {
    */
   def createTopic(suffix: Int, partitions: Int, replication: Int, config: java.util.Map[String, String]): String = {
     val topicName = createTopicName(suffix)
+    createTopicWithName(topicName, partitions, replication, config)
+  }
+
+  /**
+   * Create a topic with the given name, partition number, replication factor, and topic configuration.
+   *
+   * This method will block and return only when the topic has been successfully created.
+   */
+  def createTopicWithName(
+      topicName: String,
+      partitions: Int,
+      replication: Int,
+      config: scala.collection.Map[String, String]
+  ): String =
+    createTopicWithName(topicName, partitions, replication, config.asJava)
+
+  /**
+   * Java Api
+   *
+   * Create a topic with the given name, partition number, replication factor, and topic configuration.
+   *
+   * This method will block and return only when the topic has been successfully created.
+   */
+  def createTopicWithName(topicName: String,
+                          partitions: Int,
+                          replication: Int,
+                          config: java.util.Map[String, String]): String = {
     val createResult = adminClient.createTopics(
       Arrays.asList(new NewTopic(topicName, partitions, replication.toShort).configs(config))
     )

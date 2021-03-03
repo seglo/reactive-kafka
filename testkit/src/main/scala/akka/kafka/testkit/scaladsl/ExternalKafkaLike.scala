@@ -34,17 +34,17 @@ trait ExternalKafkaLike extends KafkaSpec with KafkaTestKit with BeforeAndAfterE
     else
       super.bootstrapServers
 
-  override def createTopic(suffix: Int,
-                           partitions: Int,
-                           replication: Int,
-                           config: java.util.Map[String, String]): String =
+  override def createTopicWithName(topicName: String,
+                                   partitions: Int,
+                                   replication: Int,
+                                   config: java.util.Map[String, String]): String =
     enabledOrElse(
       {
-        val topic = super.createTopic(suffix, partitions, replication, config)
+        val topic = super.createTopicWithName(topicName, partitions, replication, config)
         topicsCreated.add(topic)
         topic
       },
-      super.createTopic(suffix, partitions, replication, config)
+      super.createTopicWithName(topicName, partitions, replication, config)
     )
 
   override def setUp(): Unit = enabledOrElse(
