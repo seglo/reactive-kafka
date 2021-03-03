@@ -6,8 +6,9 @@
 package akka.kafka.benchmarks.app
 
 import akka.kafka.benchmarks.PerfFixtureHelpers.FilledTopic
+import akka.kafka.testkit.internal.KafkaTestKit
 
-case class RunTestCommand(testName: String, kafkaHost: String, filledTopic: FilledTopic) {
+case class RunTestCommand(testName: String, kafkaTestKit: KafkaTestKit, filledTopic: FilledTopic) {
 
   val msgCount = filledTopic.msgCount
   val msgSize = filledTopic.msgSize

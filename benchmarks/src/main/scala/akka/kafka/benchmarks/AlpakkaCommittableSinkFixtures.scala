@@ -9,22 +9,15 @@ import akka.Done
 import akka.actor.ActorSystem
 import akka.kafka.ConsumerMessage.{Committable, CommittableMessage}
 import akka.kafka.ProducerMessage.Envelope
+import akka.kafka._
 import akka.kafka.benchmarks.app.RunTestCommand
 import akka.kafka.scaladsl.Consumer.{Control, DrainingControl}
 import akka.kafka.scaladsl.{Committer, Consumer, Producer}
-import akka.kafka._
 import akka.stream.Materializer
 import akka.stream.scaladsl.{Keep, Sink, Source}
 import com.codahale.metrics.Meter
 import com.typesafe.scalalogging.LazyLogging
-import org.apache.kafka.clients.consumer.ConsumerConfig
 import org.apache.kafka.clients.producer.ProducerRecord
-import org.apache.kafka.common.serialization.{
-  ByteArrayDeserializer,
-  ByteArraySerializer,
-  StringDeserializer,
-  StringSerializer
-}
 
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Future, Promise}
@@ -42,31 +35,18 @@ object AlpakkaCommittableSinkFixtures extends PerfFixtureHelpers {
   type Message = CommittableMessage[Key, Val]
   type ProducerMessage = Envelope[Key, Val, Committable]
 
-  private def createConsumerSettings(kafkaHost: String)(implicit actorSystem: ActorSystem) =
-    ConsumerSettings(actorSystem, new ByteArrayDeserializer, new StringDeserializer)
-      .withBootstrapServers(kafkaHost)
-      .withGroupId(randomId())
-      .withClientId(randomId())
-      .withProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest")
-
-  private def createProducerSettings(
-      kafkaHost: String
-  )(implicit actorSystem: ActorSystem): ProducerSettings[Array[Byte], String] =
-    ProducerSettings(actorSystem, new ByteArraySerializer, new StringSerializer)
-      .withBootstrapServers(kafkaHost)
-
-  def producerSink(c: RunTestCommand)(implicit actorSystem: ActorSystem) =
+  def producerSink(c: RunTestCommand) =
     FixtureGen[AlpakkaCommittableSinkTestFixture[Message, ProducerMessage]](
       c,
       msgCount => {
-        fillTopic(c.filledTopic, c.kafkaHost)
+        fillTopic(c.filledTopic, c.kafkaTestKit)
         val sinkTopic = randomId()
 
         val source: Source[Message, Control] =
-          Consumer.committableSource(createConsumerSettings(c.kafkaHost), Subscriptions.topics(c.filledTopic.topic))
+          Consumer.committableSource(createConsumerSettings(c.kafkaTestKit), Subscriptions.topics(c.filledTopic.topic))
 
         val sink: Sink[ProducerMessage, Future[Done]] =
-          Producer.committableSink(createProducerSettings(c.kafkaHost), CommitterSettings(actorSystem))
+          Producer.committableSink(createProducerSettings(c.kafkaTestKit), c.kafkaTestKit.committerDefaults)
 
         AlpakkaCommittableSinkTestFixture[Message, ProducerMessage](c.filledTopic.topic,
                                                                     sinkTopic,
@@ -80,15 +60,15 @@ object AlpakkaCommittableSinkFixtures extends PerfFixtureHelpers {
     FixtureGen[AlpakkaCommittableSinkTestFixture[Message, ProducerMessage]](
       c,
       msgCount => {
-        fillTopic(c.filledTopic, c.kafkaHost)
+        fillTopic(c.filledTopic, c.kafkaTestKit)
         val sinkTopic = randomId()
 
         val source: Source[Message, Control] =
-          Consumer.committableSource(createConsumerSettings(c.kafkaHost), Subscriptions.topics(c.filledTopic.topic))
+          Consumer.committableSource(createConsumerSettings(c.kafkaTestKit), Subscriptions.topics(c.filledTopic.topic))
 
         val sink: Sink[ProducerMessage, Future[Done]] =
           Producer
-            .flexiFlow[Key, Val, Committable](createProducerSettings(c.kafkaHost))
+            .flexiFlow[Key, Val, Committable](createProducerSettings(c.kafkaTestKit))
             .map(_.passThrough)
             .toMat(Committer.sink(CommitterSettings(actorSystem)))(Keep.right)
 

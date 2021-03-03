@@ -10,10 +10,18 @@ import java.util
 import java.util.concurrent.TimeUnit
 import java.util.{Arrays, UUID}
 
+import akka.kafka.ProducerSettings
+import akka.kafka.testkit.internal.KafkaTestKit
 import com.typesafe.scalalogging.LazyLogging
-import org.apache.kafka.clients.admin.{Admin, NewTopic}
+import org.apache.kafka.clients.admin.NewTopic
+import org.apache.kafka.clients.consumer.ConsumerConfig
 import org.apache.kafka.clients.producer._
-import org.apache.kafka.common.serialization.{ByteArraySerializer, StringSerializer}
+import org.apache.kafka.common.serialization.{
+  ByteArrayDeserializer,
+  ByteArraySerializer,
+  StringDeserializer,
+  StringSerializer
+}
 
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Promise}
@@ -45,34 +53,42 @@ private[benchmarks] trait PerfFixtureHelpers extends LazyLogging {
 
   def randomId(): String = PerfFixtureHelpers.randomId()
 
-  def fillTopic(ft: FilledTopic, kafkaHost: String): Unit =
-    initTopicAndProducer(ft, kafkaHost)
+  def createConsumerSettings(kafkaTestKit: KafkaTestKit) =
+    kafkaTestKit
+      .consumerDefaults(new ByteArrayDeserializer, new StringDeserializer)
+      .withGroupId(randomId())
+      .withClientId(randomId())
+      .withProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest")
 
-  def createTopic(ft: FilledTopic, kafkaHost: String): KafkaProducer[Array[Byte], String] = {
-    val props = new java.util.HashMap[String, AnyRef]()
-    props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafkaHost)
-    val admin = Admin.create(props)
-    val producer = createTopicAndFill(ft, props, admin)
-    admin.close(adminClientCloseTimeout)
+  def createProducerSettings(kafkaTestKit: KafkaTestKit): ProducerSettings[Array[Byte], String] =
+    kafkaTestKit.producerDefaults(new ByteArraySerializer, new StringSerializer)
+
+  def fillTopic(ft: FilledTopic, kafkaTestKit: KafkaTestKit): Unit =
+    initTopicAndProducer(ft, kafkaTestKit)
+
+  def createTopic(ft: FilledTopic, kafkaTestKit: KafkaTestKit): Producer[Array[Byte], String] = {
+    //val admin = kafkaTestKit.adminClient
+    val producer = createTopicAndFill(ft, kafkaTestKit)
+    //FIXME close this in the test class?
+    //admin.close(adminClientCloseTimeout)
     producer
   }
 
-  private def initTopicAndProducer(ft: FilledTopic, kafkaHost: String): Unit = {
-    val props = new java.util.HashMap[String, AnyRef]()
-    props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafkaHost)
-    //
-    val admin = Admin.create(props)
+  private def initTopicAndProducer(ft: FilledTopic, kafkaTestKit: KafkaTestKit): Unit = {
+    val admin = kafkaTestKit.adminClient
     val existing = admin.listTopics().names().get(10, TimeUnit.SECONDS)
     if (existing.contains(ft.topic)) {
       logger.info(s"Reusing existing topic $ft")
     } else {
-      val producer = createTopicAndFill(ft, props, admin)
+      val producer = createTopicAndFill(ft, kafkaTestKit)
       producer.close(producerCloseTimeout)
     }
-    admin.close(adminClientCloseTimeout)
+    //FIXME close this in the test class?
+    //admin.close(adminClientCloseTimeout)
   }
 
-  private def createTopicAndFill(ft: FilledTopic, props: java.util.Map[String, AnyRef], admin: Admin) = {
+  private def createTopicAndFill(ft: FilledTopic, kafkaTestKit: KafkaTestKit): Producer[Array[Byte], String] = {
+    val admin = kafkaTestKit.adminClient
     val result = admin.createTopics(
       Arrays.asList(
         new NewTopic(ft.topic, ft.numberOfPartitions, ft.replicationFactor.toShort)
@@ -81,8 +97,7 @@ private[benchmarks] trait PerfFixtureHelpers extends LazyLogging {
     )
     result.all().get(10, TimeUnit.SECONDS)
     // fill topic with messages
-    val producer =
-      new KafkaProducer[Array[Byte], String](props, new ByteArraySerializer, new StringSerializer)
+    val producer = kafkaTestKit.producerDefaults(new ByteArraySerializer, new StringSerializer).createKafkaProducer()
     val lastElementStoredPromise = Promise[Unit]()
     val loggedStep = if (ft.msgCount > logPercentStep) ft.msgCount / (100 / logPercentStep) else 1
     val msg = stringOfSize(ft.msgSize)

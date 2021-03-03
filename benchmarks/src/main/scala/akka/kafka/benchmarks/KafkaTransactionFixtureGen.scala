@@ -11,12 +11,6 @@ import akka.kafka.benchmarks.app.RunTestCommand
 import org.apache.kafka.clients.consumer.{ConsumerConfig, KafkaConsumer}
 import org.apache.kafka.clients.producer.{KafkaProducer, ProducerConfig}
 import org.apache.kafka.common.IsolationLevel
-import org.apache.kafka.common.serialization.{
-  ByteArrayDeserializer,
-  ByteArraySerializer,
-  StringDeserializer,
-  StringSerializer
-}
 
 import scala.jdk.CollectionConverters._
 
@@ -43,14 +37,11 @@ object KafkaTransactionFixtures extends PerfFixtureHelpers {
     FixtureGen[KafkaTransactionTestFixture](
       c,
       msgCount => {
-        fillTopic(c.filledTopic, c.kafkaHost)
+        fillTopic(c.filledTopic, c.kafkaTestKit)
         val groupId = randomId()
         val sinkTopic = randomId()
 
-        val consumerJavaProps = new java.util.Properties
-        consumerJavaProps.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, c.kafkaHost)
-        consumerJavaProps.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, classOf[ByteArrayDeserializer])
-        consumerJavaProps.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, classOf[StringDeserializer])
+        val consumerJavaProps = createConsumerSettings(c.kafkaTestKit).getProperties
         consumerJavaProps.put(ConsumerConfig.CLIENT_ID_CONFIG, randomId())
         consumerJavaProps.put(ConsumerConfig.GROUP_ID_CONFIG, groupId)
         consumerJavaProps.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest")
@@ -59,10 +50,7 @@ object KafkaTransactionFixtures extends PerfFixtureHelpers {
         val consumer = new KafkaConsumer[Array[Byte], String](consumerJavaProps)
         consumer.subscribe(Set(c.filledTopic.topic).asJava)
 
-        val producerJavaProps = new java.util.Properties
-        producerJavaProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, classOf[ByteArraySerializer])
-        producerJavaProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, classOf[StringSerializer])
-        producerJavaProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, c.kafkaHost)
+        val producerJavaProps = createProducerSettings(c.kafkaTestKit).getProperties
         producerJavaProps.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true.toString)
         producerJavaProps.put(ProducerConfig.TRANSACTIONAL_ID_CONFIG, randomId())
         val producer = new KafkaProducer[Array[Byte], String](producerJavaProps)

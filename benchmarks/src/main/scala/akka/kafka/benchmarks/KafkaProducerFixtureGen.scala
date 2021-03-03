@@ -7,12 +7,12 @@ package akka.kafka.benchmarks
 
 import akka.kafka.benchmarks.PerfFixtureHelpers.FilledTopic
 import akka.kafka.benchmarks.app.RunTestCommand
-import org.apache.kafka.clients.producer.KafkaProducer
+import org.apache.kafka.clients.producer.Producer
 
 case class KafkaProducerTestFixture(topic: String,
                                     msgCount: Int,
                                     msgSize: Int,
-                                    producer: KafkaProducer[Array[Byte], String],
+                                    producer: Producer[Array[Byte], String],
                                     numberOfPartitions: Int) {
   def close(): Unit = producer.close()
 }
@@ -30,7 +30,7 @@ object KafkaProducerFixtures extends PerfFixtureHelpers {
     c,
     msgCount => {
       val ft = FilledTopic(msgCount = 1, msgSize = c.msgSize, numberOfPartitions = c.numberOfPartitions)
-      val rawProducer = createTopic(ft, c.kafkaHost)
+      val rawProducer = createTopic(ft, c.kafkaTestKit)
       KafkaProducerTestFixture(ft.topic, msgCount, c.msgSize, rawProducer, c.numberOfPartitions)
     }
   )

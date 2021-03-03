@@ -8,12 +8,10 @@ package akka.kafka.benchmarks
 import akka.NotUsed
 import akka.actor.ActorSystem
 import akka.kafka.ProducerMessage.{Envelope, Results}
-import akka.kafka.ProducerSettings
 import akka.kafka.benchmarks.app.RunTestCommand
 import akka.kafka.scaladsl.Producer
 import akka.stream.scaladsl.Flow
 import org.apache.kafka.clients.consumer.ConsumerRecord
-import org.apache.kafka.common.serialization.{ByteArraySerializer, StringSerializer}
 
 object ReactiveKafkaProducerFixtures extends PerfFixtureHelpers {
 
@@ -31,17 +29,12 @@ object ReactiveKafkaProducerFixtures extends PerfFixtureHelpers {
                                                            flow: FlowType[PassThrough],
                                                            numberOfPartitions: Int)
 
-  private def createProducerSettings(kafkaHost: String)(implicit actorSystem: ActorSystem): ProducerSettings[K, V] =
-    ProducerSettings(actorSystem, new ByteArraySerializer, new StringSerializer)
-      .withBootstrapServers(kafkaHost)
-      .withParallelism(Parallelism)
-
   def flowFixture(c: RunTestCommand)(implicit actorSystem: ActorSystem) =
     FixtureGen[ReactiveKafkaProducerTestFixture[Int]](
       c,
       msgCount => {
-        val flow: FlowType[Int] = Producer.flexiFlow(createProducerSettings(c.kafkaHost))
-        fillTopic(c.filledTopic.copy(msgCount = 1), c.kafkaHost)
+        val flow: FlowType[Int] = Producer.flexiFlow(createProducerSettings(c.kafkaTestKit))
+        fillTopic(c.filledTopic.copy(msgCount = 1), c.kafkaTestKit)
         ReactiveKafkaProducerTestFixture(c.filledTopic.topic, msgCount, c.msgSize, flow, c.numberOfPartitions)
       }
     )

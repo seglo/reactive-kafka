@@ -28,11 +28,11 @@ trait ExternalKafkaLike extends KafkaSpec with KafkaTestKit with BeforeAndAfterE
   val externalSettings = settings.externalKafkaSettings
 
   // FIXME
-//  override def bootstrapServers: String =
-//    if (externalSettings.enabled)
-//      externalSettings.bootstrapServers
-//    else
-//      super.bootstrapServers
+  abstract override def bootstrapServers: String =
+    if (externalSettings.enabled)
+      externalSettings.bootstrapServers
+    else
+      super.bootstrapServers
 
   override def createTopic(suffix: Int,
                            partitions: Int,

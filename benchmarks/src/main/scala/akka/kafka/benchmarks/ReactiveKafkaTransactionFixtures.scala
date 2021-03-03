@@ -12,15 +12,8 @@ import akka.kafka.ProducerMessage.{Envelope, Results}
 import akka.kafka.benchmarks.app.RunTestCommand
 import akka.kafka.scaladsl.Consumer.Control
 import akka.kafka.scaladsl.Transactional
-import akka.kafka.{ConsumerMessage, ConsumerSettings, ProducerSettings, Subscriptions}
+import akka.kafka.{ConsumerMessage, Subscriptions}
 import akka.stream.scaladsl.{Flow, Source}
-import org.apache.kafka.clients.consumer.ConsumerConfig
-import org.apache.kafka.common.serialization.{
-  ByteArrayDeserializer,
-  ByteArraySerializer,
-  StringDeserializer,
-  StringSerializer
-}
 
 import scala.concurrent.duration.FiniteDuration
 
@@ -38,31 +31,18 @@ object ReactiveKafkaTransactionFixtures extends PerfFixtureHelpers {
   type KProducerMessage = Envelope[Key, Val, PassThrough]
   type KResult = Results[Key, Val, PassThrough]
 
-  private def createConsumerSettings(kafkaHost: String)(implicit actorSystem: ActorSystem) =
-    ConsumerSettings(actorSystem, new ByteArrayDeserializer, new StringDeserializer)
-      .withBootstrapServers(kafkaHost)
-      .withGroupId(randomId())
-      .withClientId(randomId())
-      .withProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest")
-
-  private def createProducerSettings(
-      kafkaHost: String
-  )(implicit actorSystem: ActorSystem): ProducerSettings[Array[Byte], String] =
-    ProducerSettings(actorSystem, new ByteArraySerializer, new StringSerializer)
-      .withBootstrapServers(kafkaHost)
-
   def transactionalSourceAndSink(c: RunTestCommand, commitInterval: FiniteDuration)(implicit actorSystem: ActorSystem) =
     FixtureGen[ReactiveKafkaTransactionTestFixture[KTransactionMessage, KProducerMessage, KResult]](
       c,
       msgCount => {
-        fillTopic(c.filledTopic, c.kafkaHost)
+        fillTopic(c.filledTopic, c.kafkaTestKit)
         val sinkTopic = randomId()
 
-        val consumerSettings = createConsumerSettings(c.kafkaHost)
+        val consumerSettings = createConsumerSettings(c.kafkaTestKit)
         val source: Source[KTransactionMessage, Control] =
           Transactional.source(consumerSettings, Subscriptions.topics(c.filledTopic.topic))
 
-        val producerSettings = createProducerSettings(c.kafkaHost).withEosCommitInterval(commitInterval)
+        val producerSettings = createProducerSettings(c.kafkaTestKit).withEosCommitInterval(commitInterval)
         val flow: Flow[KProducerMessage, KResult, NotUsed] = Transactional.flow(producerSettings, randomId())
 
         ReactiveKafkaTransactionTestFixture[KTransactionMessage, KProducerMessage, KResult](c.filledTopic.topic,
