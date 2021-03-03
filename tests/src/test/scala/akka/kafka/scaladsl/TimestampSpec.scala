@@ -5,7 +5,7 @@
 
 package akka.kafka.scaladsl
 
-import akka.kafka.testkit.scaladsl.TestcontainersKafkaLike
+import akka.kafka.testkit.scaladsl.{ExternalKafkaLike, TestcontainersKafkaLike}
 import akka.kafka.Subscriptions
 import akka.stream.testkit.scaladsl.StreamTestKit.assertAllStagesStopped
 import akka.stream.testkit.scaladsl.TestSink
@@ -17,7 +17,12 @@ import scala.jdk.CollectionConverters._
 import scala.concurrent.Await
 import scala.concurrent.duration._
 
-class TimestampSpec extends SpecBase with TestcontainersKafkaLike with Inside with IntegrationPatience {
+class TimestampSpec
+    extends SpecBase
+    with TestcontainersKafkaLike
+    with ExternalKafkaLike
+    with Inside
+    with IntegrationPatience {
 
   "Kafka connector" must {
     "begin consuming from the given timestamp of the topic" in {

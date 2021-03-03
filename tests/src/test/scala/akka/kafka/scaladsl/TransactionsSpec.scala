@@ -10,7 +10,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import akka.Done
 import akka.kafka.ConsumerMessage.PartitionOffset
 import akka.kafka.scaladsl.Consumer.{Control, DrainingControl}
-import akka.kafka.testkit.scaladsl.TestcontainersKafkaLike
+import akka.kafka.testkit.scaladsl.{ExternalKafkaLike, TestcontainersKafkaLike}
 import akka.kafka.{ProducerMessage, _}
 import akka.stream.{OverflowStrategy, RestartSettings}
 import akka.stream.scaladsl.{Keep, RestartSource, Sink, Source}
@@ -23,7 +23,7 @@ import scala.collection.immutable
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
 
-class TransactionsSpec extends SpecBase with TestcontainersKafkaLike with TransactionsOps {
+class TransactionsSpec extends SpecBase with TestcontainersKafkaLike with ExternalKafkaLike with TransactionsOps {
 
   "A consume-transform-produce cycle" must {
 

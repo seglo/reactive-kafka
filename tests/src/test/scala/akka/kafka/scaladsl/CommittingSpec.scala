@@ -13,7 +13,7 @@ import akka.kafka.ConsumerMessage.{CommittableOffsetBatch, GroupTopicPartition}
 import akka.kafka.ProducerMessage.MultiMessage
 import akka.kafka._
 import akka.kafka.internal.CommittableOffsetBatchImpl
-import akka.kafka.testkit.scaladsl.TestcontainersKafkaLike
+import akka.kafka.testkit.scaladsl.{ExternalKafkaLike, TestcontainersKafkaLike}
 import akka.stream.RestartSettings
 import akka.stream.scaladsl.{Keep, RestartSource, Sink, Source}
 import akka.stream.testkit.scaladsl.StreamTestKit.assertAllStagesStopped
@@ -28,7 +28,7 @@ import scala.collection.immutable
 import scala.concurrent.Future
 import scala.concurrent.duration._
 
-class CommittingSpec extends SpecBase with TestcontainersKafkaLike with Inside {
+class CommittingSpec extends SpecBase with TestcontainersKafkaLike with ExternalKafkaLike with Inside {
 
   implicit val patience: PatienceConfig = PatienceConfig(30.seconds, 500.millis)
 

@@ -12,7 +12,7 @@ import java.util.function.LongBinaryOperator
 import akka.Done
 import akka.kafka._
 import akka.kafka.scaladsl.Consumer.DrainingControl
-import akka.kafka.testkit.scaladsl.TestcontainersKafkaLike
+import akka.kafka.testkit.scaladsl.{ExternalKafkaLike, TestcontainersKafkaLike}
 import akka.stream.{KillSwitches, OverflowStrategy}
 import akka.stream.scaladsl.{Keep, Sink, Source}
 import akka.stream.testkit.scaladsl.StreamTestKit.assertAllStagesStopped
@@ -27,7 +27,12 @@ import scala.concurrent.duration._
 import scala.concurrent.{Future, Promise}
 import scala.util.{Failure, Success}
 
-class PartitionedSourcesSpec extends SpecBase with TestcontainersKafkaLike with Inside with OptionValues {
+class PartitionedSourcesSpec
+    extends SpecBase
+    with TestcontainersKafkaLike
+    with ExternalKafkaLike
+    with Inside
+    with OptionValues {
 
   override def sleepAfterProduce: FiniteDuration = 500.millis
 

@@ -7,6 +7,7 @@ package akka.kafka.scaladsl
 
 import akka.kafka.Repeated
 import akka.kafka.tests.scaladsl.LogCapturing
+import org.scalatest.time.{Millis, Seconds, Span}
 // #testkit
 import akka.kafka.testkit.scaladsl.ScalatestKafkaSpec
 import org.scalatest.concurrent.{Eventually, IntegrationPatience, ScalaFutures}
@@ -26,6 +27,11 @@ abstract class SpecBase(kafkaPort: Int)
     with Eventually {
 
   protected def this() = this(kafkaPort = -1)
+
+  implicit override val patienceConfig: PatienceConfig = PatienceConfig(
+    timeout = scaled(Span(360, Seconds)),
+    interval = scaled(Span(150, Millis))
+  )
 }
 
 // #testkit

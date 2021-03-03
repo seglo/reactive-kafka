@@ -9,7 +9,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 import akka.kafka.ConsumerMessage.{CommittableMessage, CommittableOffset}
 import akka.kafka._
-import akka.kafka.testkit.scaladsl.TestcontainersKafkaLike
+import akka.kafka.testkit.scaladsl.{ExternalKafkaLike, TestcontainersKafkaLike}
 import akka.stream._
 import akka.stream.scaladsl.{Flow, Keep, Sink, Source}
 import akka.stream.testkit.scaladsl.StreamTestKit.assertAllStagesStopped
@@ -23,7 +23,7 @@ import scala.concurrent.{Await, Future, Promise}
 import scala.util.Try
 
 // https://github.com/akka/alpakka-kafka/pull/1263
-class RebalanceExtSpec extends SpecBase with TestcontainersKafkaLike with Inside {
+class RebalanceExtSpec extends SpecBase with TestcontainersKafkaLike with ExternalKafkaLike with Inside {
 
   implicit override val patienceConfig: PatienceConfig = PatienceConfig(30.seconds, 500.millis)
 

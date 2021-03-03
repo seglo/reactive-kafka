@@ -80,7 +80,7 @@ abstract class KafkaSpec(_kafkaPort: Int, val zooKeeperPort: Int, actorSystem: A
   def sleepAfterProduce: FiniteDuration = 4.seconds
 
   def awaitProduce(futures: Future[Done]*): Unit = {
-    awaitMultiple(4.seconds, futures: _*)
+    awaitMultiple(10.seconds, futures: _*)
     sleep(sleepAfterProduce, "to be sure producing has happened")
   }
 

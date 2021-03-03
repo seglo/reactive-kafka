@@ -9,7 +9,7 @@ import java.util
 import java.util.concurrent.atomic.AtomicReference
 
 import akka.kafka._
-import akka.kafka.testkit.scaladsl.TestcontainersKafkaLike
+import akka.kafka.testkit.scaladsl.{ExternalKafkaLike, TestcontainersKafkaLike}
 import akka.stream.scaladsl.{Keep, Source}
 import akka.stream.testkit.TestSubscriber
 import akka.stream.testkit.scaladsl.StreamTestKit.assertAllStagesStopped
@@ -26,7 +26,7 @@ import scala.concurrent.duration._
 import scala.jdk.CollectionConverters._
 import scala.util.Random
 
-class RebalanceSpec extends SpecBase with TestcontainersKafkaLike with Inside {
+class RebalanceSpec extends SpecBase with TestcontainersKafkaLike with ExternalKafkaLike with Inside {
 
   implicit override val patienceConfig: PatienceConfig = PatienceConfig(30.seconds, 500.millis)
 
