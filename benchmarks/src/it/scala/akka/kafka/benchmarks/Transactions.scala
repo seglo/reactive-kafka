@@ -11,14 +11,14 @@ import akka.kafka.benchmarks.app.RunTestCommand
 import scala.concurrent.duration._
 
 class ApacheKafkaTransactions extends BenchmarksBase() {
-  it should "bench with small messages" in {
+  it should "bench with small messages" ignore {
     val cmd = RunTestCommand("apache-kafka-transactions", this, topic_100_100)
     runPerfTest(cmd,
                 KafkaTransactionFixtures.initialize(cmd),
                 KafkaTransactionBenchmarks.consumeTransformProduceTransaction(commitInterval = 100.milliseconds))
   }
 
-  it should "bench with normal messages" in {
+  it should "bench with normal messages" ignore {
     val cmd = RunTestCommand("apache-kafka-transactions-normal-msg", this, topic_100_5000)
     runPerfTest(cmd,
                 KafkaTransactionFixtures.initialize(cmd),
@@ -27,7 +27,7 @@ class ApacheKafkaTransactions extends BenchmarksBase() {
 }
 
 class AlpakkaKafkaTransactions extends BenchmarksBase() {
-  it should "bench with small messages" in {
+  it should "bench with small messages" ignore {
     val cmd = RunTestCommand("alpakka-kafka-transactions", this, topic_100_100)
     runPerfTest(
       cmd,
@@ -36,7 +36,7 @@ class AlpakkaKafkaTransactions extends BenchmarksBase() {
     )
   }
 
-  it should "bench with normal messages" in {
+  it should "bench with normal messages" ignore {
     val cmd = RunTestCommand("alpakka-kafka-transactions-normal-msg", this, topic_100_5000)
     runPerfTest(
       cmd,
