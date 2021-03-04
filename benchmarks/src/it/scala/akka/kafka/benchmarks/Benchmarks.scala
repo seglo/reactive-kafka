@@ -94,7 +94,7 @@ class AlpakkaKafkaPlainConsumer extends BenchmarksBase() {
     runPerfTest(cmd, ReactiveKafkaConsumerFixtures.plainSources(cmd), ReactiveKafkaConsumerBenchmarks.consumePlain)
   }
 
-  it should "bench with normal messages and one hundred partitions with inflight metrics" in {
+  it should "bench with normal messages and one hundred partitions with inflight metrics" ignore {
     val cmd =
       RunTestCommand("alpakka-kafka-plain-consumer-normal-msg-100-partitions-with-inflight-metrics",
                      this,
