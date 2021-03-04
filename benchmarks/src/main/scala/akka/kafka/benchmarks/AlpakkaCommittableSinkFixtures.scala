@@ -41,6 +41,7 @@ object AlpakkaCommittableSinkFixtures extends PerfFixtureHelpers {
       msgCount => {
         fillTopic(c.filledTopic, c.kafkaTestKit)
         val sinkTopic = randomId()
+        c.kafkaTestKit.createTopicWithName(sinkTopic, 1, c.filledTopic.replicationFactor, Map.empty[String, String])
 
         val source: Source[Message, Control] =
           Consumer.committableSource(createConsumerSettings(c.kafkaTestKit), Subscriptions.topics(c.filledTopic.topic))
@@ -62,6 +63,7 @@ object AlpakkaCommittableSinkFixtures extends PerfFixtureHelpers {
       msgCount => {
         fillTopic(c.filledTopic, c.kafkaTestKit)
         val sinkTopic = randomId()
+        c.kafkaTestKit.createTopicWithName(sinkTopic, 1, c.filledTopic.replicationFactor, Map.empty[String, String])
 
         val source: Source[Message, Control] =
           Consumer.committableSource(createConsumerSettings(c.kafkaTestKit), Subscriptions.topics(c.filledTopic.topic))
