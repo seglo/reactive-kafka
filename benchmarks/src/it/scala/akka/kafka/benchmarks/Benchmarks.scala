@@ -23,10 +23,10 @@ object BenchmarksBase {
   def initialize(config: Config): Unit = {
     settings = settings.orElse(Some(KafkaTestkitTestcontainersSettings(config)))
   }
-  def numBrokers: Int =
-    settings.getOrElse {
-      throw new RuntimeException("Call initialize first")
-    }.numBrokers
+  def numBrokers: Int = 3
+//    settings.getOrElse {
+//      throw new RuntimeException("Call initialize first")
+//    }.numBrokers
 
   val AzureEventHubMaxPartitions = 32
 
@@ -129,14 +129,14 @@ class AlpakkaKafkaPlainConsumer extends BenchmarksBase() {
 }
 
 class ApacheKafkaAtMostOnceConsumer extends BenchmarksBase() {
-  it should "bench" in {
+  it should "bench" ignore {
     val cmd = RunTestCommand("apache-kafka-at-most-once-consumer", this, topic_50_100)
     runPerfTest(cmd, KafkaConsumerFixtures.filledTopics(cmd), KafkaConsumerBenchmarks.consumeCommitAtMostOnce)
   }
 }
 
 class AlpakkaKafkaAtMostOnceConsumer extends BenchmarksBase() {
-  it should "bench" in {
+  it should "bench" ignore {
     val cmd = RunTestCommand("alpakka-kafka-at-most-once-consumer", this, topic_50_100)
     runPerfTest(cmd,
                 ReactiveKafkaConsumerFixtures.committableSources(cmd),
